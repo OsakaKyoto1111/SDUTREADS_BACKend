@@ -18,6 +18,7 @@ func (r *CommentRepository) Add(comment *model.Comment) error {
 	return r.db.Create(comment).Error
 }
 
+// GetRootComments - only root comments (parent_id IS NULL) with User preloaded and optionally Likes preloaded
 func (r *CommentRepository) GetRootComments(postID uint, limit, offset int) ([]model.Comment, error) {
 	var comments []model.Comment
 
@@ -28,6 +29,20 @@ func (r *CommentRepository) GetRootComments(postID uint, limit, offset int) ([]m
 		Order("created_at DESC").
 		Limit(limit).
 		Offset(offset).
+		Find(&comments).Error
+
+	return comments, err
+}
+
+// GetCommentsByPostID - load all comments for a post with User and Likes preloaded
+func (r *CommentRepository) GetCommentsByPostID(postID uint) ([]model.Comment, error) {
+	var comments []model.Comment
+
+	err := r.db.
+		Where("post_id = ?", postID).
+		Preload("User").
+		Preload("Likes").
+		Order("created_at ASC").
 		Find(&comments).Error
 
 	return comments, err
@@ -44,4 +59,16 @@ func (r *CommentRepository) GetReplies(parentID uint) ([]model.Comment, error) {
 		Find(&replies).Error
 
 	return replies, err
+}
+func (r *CommentRepository) GetCommentsFlat(postID uint) ([]model.Comment, error) {
+	var comments []model.Comment
+
+	err := r.db.
+		Where("post_id = ?", postID).
+		Preload("User").
+		Preload("Likes").
+		Order("created_at ASC").
+		Find(&comments).Error
+
+	return comments, err
 }

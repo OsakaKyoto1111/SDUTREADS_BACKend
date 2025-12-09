@@ -6,7 +6,6 @@ import (
 )
 
 func MapCommentToDTO(c model.Comment, isLiked bool, likesCount int) dto.CommentDTO {
-	// Replies recursive mapping
 	var replies []dto.CommentDTO
 	for _, r := range c.Replies {
 		replies = append(replies, MapCommentToDTO(r, false, len(r.Likes)))

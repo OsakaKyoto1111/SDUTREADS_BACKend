@@ -18,8 +18,11 @@ func (r *PostRepository) CreatePost(post *model.Post) error {
 	return r.db.Create(post).Error
 }
 
-func (r *PostRepository) UpdatePost(post *model.Post) error {
-	return r.db.Save(post).Error
+func (r *PostRepository) UpdateFields(id uint, fields map[string]interface{}) error {
+	if len(fields) == 0 {
+		return nil
+	}
+	return r.db.Model(&model.Post{}).Where("id = ?", id).Updates(fields).Error
 }
 
 func (r *PostRepository) DeletePost(id uint, userID uint) error {
@@ -43,19 +46,15 @@ func (r *PostRepository) UnlikePost(postID, userID uint) error {
 		Delete(&model.PostLike{}).Error
 }
 
-func (r *PostRepository) AddComment(comment *model.Comment) error {
-	return r.db.Create(comment).Error
-}
-
-func (r *PostRepository) LikeComment(commentID, userID uint) error {
-	like := model.CommentLike{
-		CommentID: commentID,
-		UserID:    userID,
+func (r *PostRepository) FindByID(id uint) (*model.Post, error) {
+	var post model.Post
+	err := r.db.
+		Where("id = ?", id).
+		Preload("Files").
+		Preload("Likes").
+		First(&post).Error
+	if err != nil {
+		return nil, err
 	}
-	return r.db.FirstOrCreate(&like, like).Error
-}
-
-func (r *PostRepository) UnlikeComment(commentID, userID uint) error {
-	return r.db.Where("comment_id = ? AND user_id = ?", commentID, userID).
-		Delete(&model.CommentLike{}).Error
+	return &post, nil
 }

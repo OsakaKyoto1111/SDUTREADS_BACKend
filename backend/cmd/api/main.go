@@ -22,26 +22,41 @@ import (
 )
 
 func main() {
-	// -------------------- Load config --------------------
 	cfg, err := config.Load()
 	if err != nil {
 		log.Fatalf("failed to load config: %v", err)
 	}
 
-	// -------------------- Init DB --------------------
 	db, err := database.InitPostgres(cfg)
 	if err != nil {
 		log.Fatalf("failed to connect to postgres: %v", err)
 	}
 
-	// -------------------- Repos & Services --------------------
 	userRepo := repository.NewUserRepository(db)
+	postRepo := repository.NewPostRepository(db)
+	commentRepo := repository.NewCommentRepository(db)
+	commentLikeRepo := repository.NewCommentLikeRepository(db)
+	feedRepo := repository.NewFeedRepository(db)
+
 	authSvc := service.NewAuthService(userRepo, cfg.JWTSecret)
 	userSvc := service.NewUserService(userRepo)
 
-	// -------------------- Handlers --------------------
+	commentLikeSvc := service.NewCommentLikeService(commentLikeRepo)
+	commentSvc := service.NewCommentService(commentRepo, commentLikeRepo)
+
+	commentTreeSvc := service.NewCommentTreeService(commentRepo, commentLikeRepo)
+	postSvc := service.NewPostService(postRepo, commentSvc, commentTreeSvc)
+
+	fileSvc := service.NewFileService("uploads", "/uploads/", 10*1024*1024, []string{"jpg", "jpeg", "png", "gif", "mp4"})
+
+	feedSvc := service.NewFeedService(feedRepo)
+
 	authHandler := handler.NewAuthHandler(authSvc)
 	userHandler := handler.NewUserHandler(userSvc)
+	postHandler := handler.NewPostHandler(postSvc, fileSvc)
+	commentHandler := handler.NewCommentHandler(commentSvc)
+	commentLikeHandler := handler.NewCommentLikeHandler(commentLikeSvc)
+	feedHandler := handler.NewFeedHandler(feedSvc)
 
 	e := echo.New()
 	e.Use(echoMiddleware.Logger())
@@ -50,15 +65,16 @@ func main() {
 
 	api := e.Group("/api")
 
-	// -------------------- Auth --------------------
+	feedGroup := api.Group("/feed")
+	feedGroup.Use(middleware.JWT(cfg.JWTSecret))
+	feedGroup.GET("", feedHandler.GetFeed)
+
 	authGroup := api.Group("/auth")
 	authGroup.POST("/register", authHandler.Register)
 	authGroup.POST("/login", authHandler.Login)
 
-	// -------------------- User --------------------
 	userGroup := api.Group("/user")
 	userGroup.Use(middleware.JWT(cfg.JWTSecret))
-
 	userGroup.GET("/me", userHandler.GetMe)
 	userGroup.PATCH("/me", userHandler.UpdateMe)
 	userGroup.POST("/avatar", userHandler.UploadAvatar)
@@ -66,44 +82,22 @@ func main() {
 	userGroup.POST("/:id/follow", userHandler.Follow)
 	userGroup.DELETE("/:id/follow", userHandler.Unfollow)
 
-	// -------------------- Posts & Comments --------------------
-	postRepo := repository.NewPostRepository(db)
-	postService := service.NewPostService(postRepo)
-	postHandler := handler.NewPostHandler(postService)
-
-	commentRepo := repository.NewCommentRepository(db)
-	commentLikeRepo := repository.NewCommentLikeRepository(db)
-
-	commentLikeService := service.NewCommentLikeService(commentLikeRepo)
-	commentLikeHandler := handler.NewCommentLikeHandler(commentLikeService)
-
-	commentService := service.NewCommentService(commentRepo, commentLikeRepo)
-	commentHandler := handler.NewCommentHandler(commentService)
-
-	// -------------------- Routes --------------------
 	postGroup := api.Group("/posts")
 	postGroup.Use(middleware.JWT(cfg.JWTSecret))
 
-	// Comments
-	postGroup.GET("/:id/comments", commentHandler.Get)
-	postGroup.POST("/:id/comments", commentHandler.Add)
-
-	// Comment likes
-	postGroup.POST("/comments/:comment_id/like", commentLikeHandler.Like)
-	postGroup.DELETE("/comments/:comment_id/like", commentLikeHandler.Unlike)
-
-	// Posts
 	postGroup.POST("", postHandler.Create)
+	postGroup.GET("/:id", postHandler.GetPost)
 	postGroup.PATCH("/:id", postHandler.Update)
 	postGroup.DELETE("/:id", postHandler.Delete)
-
 	postGroup.POST("/:id/files", postHandler.AddFiles)
-
-	// Post likes
 	postGroup.POST("/:id/like", postHandler.LikePost)
 	postGroup.DELETE("/:id/like", postHandler.UnlikePost)
 
-	// -------------------- Graceful Shutdown --------------------
+	postGroup.GET("/:id/comments", commentHandler.Get)  // paginated root comments + replies
+	postGroup.POST("/:id/comments", commentHandler.Add) // add comment to post
+	postGroup.POST("/comments/:comment_id/like", commentLikeHandler.Like)
+	postGroup.DELETE("/comments/:comment_id/like", commentLikeHandler.Unlike)
+
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
