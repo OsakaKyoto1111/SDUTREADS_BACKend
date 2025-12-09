@@ -113,7 +113,6 @@ func (r *userRepository) Search(query string) ([]model.User, error) {
 }
 
 func (r *userRepository) Follow(userID, targetID uint) error {
-	// check existing and create if absent
 	var existing model.Follower
 	err := r.db.Where("user_id = ? AND follower_id = ?", targetID, userID).First(&existing).Error
 	if err == nil {

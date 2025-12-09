@@ -8,11 +8,6 @@ type UpdatePostRequest struct {
 	Description *string `json:"description"`
 }
 
-type AddCommentRequest struct {
-	Text     string `json:"text" validate:"required"`
-	ParentID *uint  `json:"parent_id"`
-}
-
 type PostResponse struct {
 	ID          uint           `json:"id"`
 	Description *string        `json:"description"`

@@ -50,10 +50,12 @@ func main() {
 
 	api := e.Group("/api")
 
+	// -------------------- Auth --------------------
 	authGroup := api.Group("/auth")
 	authGroup.POST("/register", authHandler.Register)
 	authGroup.POST("/login", authHandler.Login)
 
+	// -------------------- User --------------------
 	userGroup := api.Group("/user")
 	userGroup.Use(middleware.JWT(cfg.JWTSecret))
 
@@ -64,24 +66,44 @@ func main() {
 	userGroup.POST("/:id/follow", userHandler.Follow)
 	userGroup.DELETE("/:id/follow", userHandler.Unfollow)
 
+	// -------------------- Posts & Comments --------------------
 	postRepo := repository.NewPostRepository(db)
 	postService := service.NewPostService(postRepo)
 	postHandler := handler.NewPostHandler(postService)
 
+	commentRepo := repository.NewCommentRepository(db)
+	commentLikeRepo := repository.NewCommentLikeRepository(db)
+
+	commentLikeService := service.NewCommentLikeService(commentLikeRepo)
+	commentLikeHandler := handler.NewCommentLikeHandler(commentLikeService)
+
+	commentService := service.NewCommentService(commentRepo, commentLikeRepo)
+	commentHandler := handler.NewCommentHandler(commentService)
+
+	// -------------------- Routes --------------------
 	postGroup := api.Group("/posts")
 	postGroup.Use(middleware.JWT(cfg.JWTSecret))
 
+	// Comments
+	postGroup.GET("/:id/comments", commentHandler.Get)
+	postGroup.POST("/:id/comments", commentHandler.Add)
+
+	// Comment likes
+	postGroup.POST("/comments/:comment_id/like", commentLikeHandler.Like)
+	postGroup.DELETE("/comments/:comment_id/like", commentLikeHandler.Unlike)
+
+	// Posts
 	postGroup.POST("", postHandler.Create)
 	postGroup.PATCH("/:id", postHandler.Update)
 	postGroup.DELETE("/:id", postHandler.Delete)
 
 	postGroup.POST("/:id/files", postHandler.AddFiles)
 
-	postGroup.POST("/:id/comments", postHandler.AddComment)
-
+	// Post likes
 	postGroup.POST("/:id/like", postHandler.LikePost)
 	postGroup.DELETE("/:id/like", postHandler.UnlikePost)
 
+	// -------------------- Graceful Shutdown --------------------
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 

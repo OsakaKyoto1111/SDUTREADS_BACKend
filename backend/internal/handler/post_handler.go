@@ -70,7 +70,6 @@ func (h *PostHandler) Delete(c echo.Context) error {
 func (h *PostHandler) AddFiles(c echo.Context) error {
 	postID := parseID(c.Param("id"))
 
-	// читаем multipart
 	form, err := c.MultipartForm()
 	if err != nil {
 		return c.JSON(http.StatusBadRequest, echo.Map{"error": "invalid form"})
@@ -81,7 +80,6 @@ func (h *PostHandler) AddFiles(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, echo.Map{"error": "no files provided"})
 	}
 
-	// создаём директорию uploads/posts/<postID>
 	uploadDir := filepath.Join("uploads", "posts", fmt.Sprint(postID))
 	if err := os.MkdirAll(uploadDir, 0755); err != nil {
 		return c.JSON(http.StatusInternalServerError, echo.Map{"error": err.Error()})
@@ -110,12 +108,10 @@ func (h *PostHandler) AddFiles(c echo.Context) error {
 			return c.JSON(http.StatusInternalServerError, echo.Map{"error": err.Error()})
 		}
 
-		// URL для фронта
 		url := "/uploads/posts/" + fmt.Sprint(postID) + "/" + newName
 		urls = append(urls, url)
 	}
 
-	// сохраняем в базу
 	if err := h.postService.AddFiles(postID, urls); err != nil {
 		return c.JSON(http.StatusInternalServerError, echo.Map{"error": err.Error()})
 	}

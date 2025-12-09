@@ -16,10 +16,8 @@ type User struct {
 	City        *string
 	Description *string
 
-	// followers: все записи followers, где followers.user_id == user.ID
 	Followers []Follower `gorm:"foreignKey:UserID"`
 
-	// following: все записи followers, где followers.follower_id == user.ID
 	Following []Follower `gorm:"foreignKey:FollowerID"`
 
 	Posts     []Post     `gorm:"foreignKey:UserID"`
