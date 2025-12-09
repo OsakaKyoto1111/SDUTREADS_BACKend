@@ -1,86 +1,133 @@
 package repository
 
 import (
-	"context"
-	"errors"
-
 	"backend/internal/model"
+	"errors"
 
 	"gorm.io/gorm"
 )
 
-var (
-	// ErrNotFound signals any repository query that cannot find a record.
-	ErrNotFound = errors.New("record not found")
-)
+var ErrNotFound = errors.New("not found")
 
-// UserRepository defines operations against the user storage.
 type UserRepository interface {
-	CreateUser(ctx context.Context, user *model.User) error
-	FindByEmail(ctx context.Context, email string) (*model.User, error)
-	FindByNickname(ctx context.Context, nickname string) (*model.User, error)
-	FindByID(ctx context.Context, id uint) (*model.User, error)
-	UpdateProfile(ctx context.Context, id uint, fields map[string]interface{}) error
-	SearchUsers(ctx context.Context, query string, limit int) ([]model.User, error)
+	Create(user *model.User) error
+	GetByID(id uint) (*model.User, error)
+	GetByIDWithPreloads(id uint) (*model.User, error) // optional
+	GetByEmail(email string) (*model.User, error)
+	GetByNickname(nickname string) (*model.User, error)
+	Update(user *model.User) error
+	Delete(id uint) error
+
+	GetPostsCount(userID uint) (int64, error)
+	GetFollowersCount(userID uint) (int64, error)
+	GetFollowingCount(userID uint) (int64, error)
+
+	Search(query string) ([]model.User, error)
+	Follow(userID, targetID uint) error
+	Unfollow(userID, targetID uint) error
 }
 
 type userRepository struct {
 	db *gorm.DB
 }
 
-// NewUserRepository creates a repository tied to the provided DB connection.
 func NewUserRepository(db *gorm.DB) UserRepository {
 	return &userRepository{db: db}
 }
 
-func (r *userRepository) CreateUser(ctx context.Context, user *model.User) error {
-	return r.db.WithContext(ctx).Create(user).Error
+func (r *userRepository) Create(user *model.User) error {
+	return r.db.Create(user).Error
 }
 
-func (r *userRepository) FindByEmail(ctx context.Context, email string) (*model.User, error) {
+func (r *userRepository) GetByID(id uint) (*model.User, error) {
 	var user model.User
-	err := r.db.WithContext(ctx).Where("email = ?", email).First(&user).Error
+	if err := r.db.First(&user, id).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, ErrNotFound
+		}
+		return nil, err
+	}
+	return &user, nil
+}
+
+func (r *userRepository) GetByIDWithPreloads(id uint) (*model.User, error) {
+	var user model.User
+	err := r.db.Preload("Posts").Preload("Followers").Preload("Following").First(&user, id).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, ErrNotFound
+		}
+		return nil, err
+	}
+	return &user, nil
+}
+
+func (r *userRepository) GetPostsCount(userID uint) (int64, error) {
+	var cnt int64
+	err := r.db.Model(&model.Post{}).Where("user_id = ?", userID).Count(&cnt).Error
+	return cnt, err
+}
+
+func (r *userRepository) GetFollowersCount(userID uint) (int64, error) {
+	var cnt int64
+	err := r.db.Model(&model.Follower{}).Where("user_id = ?", userID).Count(&cnt).Error
+	return cnt, err
+}
+
+func (r *userRepository) GetFollowingCount(userID uint) (int64, error) {
+	var cnt int64
+	err := r.db.Model(&model.Follower{}).Where("follower_id = ?", userID).Count(&cnt).Error
+	return cnt, err
+}
+
+func (r *userRepository) GetByEmail(email string) (*model.User, error) {
+	var u model.User
+	err := r.db.Where("email = ?", email).First(&u).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, ErrNotFound
 	}
-	return &user, err
+	return &u, err
 }
 
-func (r *userRepository) FindByNickname(ctx context.Context, nickname string) (*model.User, error) {
-	var user model.User
-	err := r.db.WithContext(ctx).Where("nickname = ?", nickname).First(&user).Error
+func (r *userRepository) GetByNickname(nickname string) (*model.User, error) {
+	var u model.User
+	err := r.db.Where("nickname = ?", nickname).First(&u).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, ErrNotFound
 	}
-	return &user, err
+	return &u, err
 }
 
-func (r *userRepository) FindByID(ctx context.Context, id uint) (*model.User, error) {
-	var user model.User
-	err := r.db.WithContext(ctx).First(&user, id).Error
-	if errors.Is(err, gorm.ErrRecordNotFound) {
-		return nil, ErrNotFound
-	}
-	return &user, err
+func (r *userRepository) Update(user *model.User) error {
+	return r.db.Save(user).Error
 }
 
-func (r *userRepository) UpdateProfile(ctx context.Context, id uint, fields map[string]interface{}) error {
-	if len(fields) == 0 {
+func (r *userRepository) Delete(id uint) error {
+	return r.db.Delete(&model.User{}, id).Error
+}
+
+func (r *userRepository) Search(query string) ([]model.User, error) {
+	var users []model.User
+	err := r.db.Where("nickname ILIKE ? OR email ILIKE ?", "%"+query+"%", "%"+query+"%").Find(&users).Error
+	return users, err
+}
+
+func (r *userRepository) Follow(userID, targetID uint) error {
+	// check existing and create if absent
+	var existing model.Follower
+	err := r.db.Where("user_id = ? AND follower_id = ?", targetID, userID).First(&existing).Error
+	if err == nil {
 		return nil
 	}
-	return r.db.WithContext(ctx).Model(&model.User{}).Where("id = ?", id).Updates(fields).Error
+	if !errors.Is(err, gorm.ErrRecordNotFound) {
+		return err
+	}
+	return r.db.Create(&model.Follower{
+		UserID:     targetID,
+		FollowerID: userID,
+	}).Error
 }
 
-func (r *userRepository) SearchUsers(ctx context.Context, query string, limit int) ([]model.User, error) {
-	if limit <= 0 {
-		limit = 25
-	}
-	pattern := "%" + query + "%"
-	var users []model.User
-	err := r.db.WithContext(ctx).
-		Where("nickname ILIKE ? OR first_name ILIKE ? OR last_name ILIKE ?", pattern, pattern, pattern).
-		Limit(limit).
-		Find(&users).
-		Error
-	return users, err
+func (r *userRepository) Unfollow(userID, targetID uint) error {
+	return r.db.Where("user_id = ? AND follower_id = ?", targetID, userID).Delete(&model.Follower{}).Error
 }

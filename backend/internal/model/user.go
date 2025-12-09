@@ -16,15 +16,15 @@ type User struct {
 	City        *string
 	Description *string
 
-	PostsCount     int `gorm:"column:posts_count;default:0"`
-	FollowersCount int `gorm:"column:followers_count;default:0"`
-	FollowingCount int `gorm:"column:following_count;default:0"`
+	// followers: все записи followers, где followers.user_id == user.ID
+	Followers []Follower `gorm:"foreignKey:UserID"`
+
+	// following: все записи followers, где followers.follower_id == user.ID
+	Following []Follower `gorm:"foreignKey:FollowerID"`
 
 	Posts     []Post     `gorm:"foreignKey:UserID"`
 	PostLikes []PostLike `gorm:"foreignKey:UserID"`
 	Comments  []Comment  `gorm:"foreignKey:UserID"`
-	Followers []Follower `gorm:"foreignKey:UserID"`
-	Following []Follower `gorm:"foreignKey:FollowerID"`
 
 	CreatedAt time.Time
 	UpdatedAt time.Time

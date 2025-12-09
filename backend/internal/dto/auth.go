@@ -1,24 +1,23 @@
 package dto
 
-// RegisterRequest describes a payload for new user registration.
 type RegisterRequest struct {
-	Email     string  `json:"email"`
-	Nickname  string  `json:"nickname"`
-	Password  string  `json:"password"`
-	FirstName *string `json:"first_name,omitempty"`
-	LastName  *string `json:"last_name,omitempty"`
-	Grade     *string `json:"grade,omitempty"`
-	Major     *string `json:"major,omitempty"`
-	City      *string `json:"city,omitempty"`
+	Email    string `json:"email" validate:"required,email"`
+	Nickname string `json:"nickname" validate:"required"`
+	Password string `json:"password" validate:"required,min=6"`
+
+	FirstName   *string `json:"first_name"`
+	LastName    *string `json:"last_name"`
+	Grade       *string `json:"grade"`
+	Major       *string `json:"major"`
+	City        *string `json:"city"`
+	Description *string `json:"description"`
 }
 
-// LoginRequest describes credentials for login.
 type LoginRequest struct {
-	EmailOrUsername string `json:"email_or_username"`
-	Password        string `json:"password"`
+	EmailOrUsername string `json:"email_or_username" validate:"required"`
+	Password        string `json:"password" validate:"required"`
 }
 
-// AuthResponse combines user view and access token.
 type AuthResponse struct {
 	User        UserResponse `json:"user"`
 	AccessToken string       `json:"access_token"`

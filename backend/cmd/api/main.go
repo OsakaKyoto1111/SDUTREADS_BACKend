@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"log"
 	"net/http"
 	"os"
@@ -21,39 +22,51 @@ import (
 )
 
 func main() {
+	// -------------------- Load config --------------------
 	cfg, err := config.Load()
 	if err != nil {
 		log.Fatalf("failed to load config: %v", err)
 	}
 
+	// -------------------- Init DB --------------------
 	db, err := database.InitPostgres(cfg)
 	if err != nil {
 		log.Fatalf("failed to connect to postgres: %v", err)
 	}
 
+	// -------------------- Repos & Services --------------------
 	userRepo := repository.NewUserRepository(db)
 	authSvc := service.NewAuthService(userRepo, cfg.JWTSecret)
 	userSvc := service.NewUserService(userRepo)
 
+	// -------------------- Handlers --------------------
 	authHandler := handler.NewAuthHandler(authSvc)
 	userHandler := handler.NewUserHandler(userSvc)
 
+	// -------------------- Echo --------------------
 	e := echo.New()
 	e.Use(echoMiddleware.Logger())
+	e.Use(echoMiddleware.Recover())
 	e.Use(echoMiddleware.CORS())
 
 	api := e.Group("/api")
+
+	// -------------------- Auth Routes --------------------
 	authGroup := api.Group("/auth")
 	authGroup.POST("/register", authHandler.Register)
 	authGroup.POST("/login", authHandler.Login)
 
 	userGroup := api.Group("/user")
 	userGroup.Use(middleware.JWT(cfg.JWTSecret))
-	userGroup.GET("/me", userHandler.GetMe)
-	userGroup.PATCH("/me", userHandler.UpdateProfile)
-	userGroup.GET("/search", userHandler.SearchUsers)
-	userGroup.GET("/:id", userHandler.GetByID)
 
+	userGroup.GET("/me", userHandler.GetMe)
+	userGroup.PATCH("/me", userHandler.UpdateMe)
+	userGroup.POST("/avatar", userHandler.UploadAvatar)
+	userGroup.GET("/search", userHandler.SearchUsers)
+	userGroup.POST("/:id/follow", userHandler.Follow)
+	userGroup.DELETE("/:id/follow", userHandler.Unfollow)
+
+	// -------------------- Graceful Shutdown --------------------
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
@@ -64,7 +77,7 @@ func main() {
 
 	select {
 	case err := <-serverErr:
-		if err != nil && err != http.ErrServerClosed {
+		if err != nil && !errors.Is(err, http.ErrServerClosed) {
 			log.Printf("server start error: %v", err)
 		}
 	case <-ctx.Done():

@@ -12,10 +12,6 @@ CREATE TABLE users (
                        city TEXT,
                        description TEXT,
 
-                       posts_count INT DEFAULT 0,
-                       followers_count INT DEFAULT 0,
-                       following_count INT DEFAULT 0,
-
                        created_at TIMESTAMPTZ DEFAULT NOW(),
                        updated_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -78,3 +74,6 @@ CREATE TABLE followers (
 );
 
 CREATE UNIQUE INDEX uniq_followers ON followers(user_id, follower_id);
+CREATE UNIQUE INDEX IF NOT EXISTS uniq_followers ON followers (user_id, follower_id);
+CREATE INDEX IF NOT EXISTS idx_followers_user_id ON followers(user_id);
+CREATE INDEX IF NOT EXISTS idx_followers_follower_id ON followers(follower_id);

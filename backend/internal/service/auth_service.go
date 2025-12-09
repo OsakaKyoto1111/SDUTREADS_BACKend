@@ -1,12 +1,11 @@
 package service
 
 import (
-	"context"
 	"errors"
-	"strings"
 	"time"
 
 	"backend/internal/dto"
+	"backend/internal/mapper"
 	"backend/internal/model"
 	"backend/internal/repository"
 
@@ -14,32 +13,33 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
-// AuthService orchestrates authentication flows.
 type AuthService struct {
 	repo      repository.UserRepository
 	jwtSecret string
 }
 
-// NewAuthService builds an AuthService.
 func NewAuthService(repo repository.UserRepository, jwtSecret string) *AuthService {
 	return &AuthService{repo: repo, jwtSecret: jwtSecret}
 }
 
-// Register creates a new user and returns a token.
-func (s *AuthService) Register(ctx context.Context, req dto.RegisterRequest) (*dto.AuthResponse, error) {
-	if strings.TrimSpace(req.Email) == "" || strings.TrimSpace(req.Nickname) == "" || req.Password == "" {
-		return nil, errors.New("email, nickname, and password are required")
+func (s *AuthService) Register(req dto.RegisterRequest) (*dto.AuthResponse, error) {
+	if req.Email == "" || req.Nickname == "" || req.Password == "" {
+		return nil, errors.New("email, nickname and password required")
 	}
 
-	if _, err := s.repo.FindByEmail(ctx, req.Email); err == nil {
+	_, err := s.repo.GetByEmail(req.Email)
+	if err == nil {
 		return nil, errors.New("email already registered")
-	} else if !errors.Is(err, repository.ErrNotFound) {
+	}
+	if !errors.Is(err, repository.ErrNotFound) {
 		return nil, err
 	}
 
-	if _, err := s.repo.FindByNickname(ctx, req.Nickname); err == nil {
+	_, err = s.repo.GetByNickname(req.Nickname)
+	if err == nil {
 		return nil, errors.New("nickname already registered")
-	} else if !errors.Is(err, repository.ErrNotFound) {
+	}
+	if !errors.Is(err, repository.ErrNotFound) {
 		return nil, err
 	}
 
@@ -48,45 +48,30 @@ func (s *AuthService) Register(ctx context.Context, req dto.RegisterRequest) (*d
 		return nil, err
 	}
 
-	user := &model.User{
-		Email:        req.Email,
-		Nickname:     req.Nickname,
-		PasswordHash: string(hash),
-		FirstName:    req.FirstName,
-		LastName:     req.LastName,
-		Grade:        req.Grade,
-		Major:        req.Major,
-		City:         req.City,
-	}
+	user := mapper.MapRegisterRequestToUser(req, string(hash))
 
-	if err := s.repo.CreateUser(ctx, user); err != nil {
+	if err := s.repo.Create(user); err != nil {
 		return nil, err
 	}
 
+	// build response with counts (all zero on fresh user)
 	return s.buildAuthResponse(user)
 }
 
-// Login authenticates credentials.
-func (s *AuthService) Login(ctx context.Context, req dto.LoginRequest) (*dto.AuthResponse, error) {
-	if strings.TrimSpace(req.EmailOrUsername) == "" || req.Password == "" {
-		return nil, errors.New("email_or_username and password are required")
+func (s *AuthService) Login(req dto.LoginRequest) (*dto.AuthResponse, error) {
+	if req.EmailOrUsername == "" || req.Password == "" {
+		return nil, errors.New("email_or_username and password required")
 	}
 
-	user, err := s.repo.FindByEmail(ctx, req.EmailOrUsername)
+	user, err := s.repo.GetByEmail(req.EmailOrUsername)
+	if errors.Is(err, repository.ErrNotFound) {
+		user, err = s.repo.GetByNickname(req.EmailOrUsername)
+	}
 	if err != nil {
-		if !errors.Is(err, repository.ErrNotFound) {
-			return nil, err
-		}
-		user, err = s.repo.FindByNickname(ctx, req.EmailOrUsername)
-		if err != nil {
-			if errors.Is(err, repository.ErrNotFound) {
-				return nil, errors.New("invalid credentials")
-			}
-			return nil, err
-		}
+		return nil, errors.New("invalid credentials")
 	}
 
-	if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(req.Password)); err != nil {
+	if bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(req.Password)) != nil {
 		return nil, errors.New("invalid credentials")
 	}
 
@@ -94,12 +79,27 @@ func (s *AuthService) Login(ctx context.Context, req dto.LoginRequest) (*dto.Aut
 }
 
 func (s *AuthService) buildAuthResponse(user *model.User) (*dto.AuthResponse, error) {
+	// get counts
+	postsCnt, err := s.repo.GetPostsCount(user.ID)
+	if err != nil {
+		return nil, err
+	}
+	followersCnt, err := s.repo.GetFollowersCount(user.ID)
+	if err != nil {
+		return nil, err
+	}
+	followingCnt, err := s.repo.GetFollowingCount(user.ID)
+	if err != nil {
+		return nil, err
+	}
+
 	token, err := s.buildJWT(user)
 	if err != nil {
 		return nil, err
 	}
+
 	return &dto.AuthResponse{
-		User:        mapToUserResponse(user),
+		User:        mapper.MapUserToResponseWithCounts(user, postsCnt, followersCnt, followingCnt),
 		AccessToken: token,
 	}, nil
 }
@@ -114,6 +114,7 @@ func (s *AuthService) buildJWT(user *model.User) (string, error) {
 			Subject:   user.Nickname,
 		},
 	}
+
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 	return token.SignedString([]byte(s.jwtSecret))
 }

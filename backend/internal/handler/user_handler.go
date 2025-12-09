@@ -1,95 +1,175 @@
 package handler
 
 import (
+	"backend/internal/dto"
+	"backend/internal/service"
 	"errors"
+	"io"
+	"mime/multipart"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 
-	"backend/internal/dto"
-	"backend/internal/repository"
-	"backend/internal/service"
-	"backend/internal/utils"
-
+	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
 )
 
-// UserHandler exposes user profile endpoints.
 type UserHandler struct {
-	userService *service.UserService
+	service service.UserService
 }
 
-// NewUserHandler builds a UserHandler.
-func NewUserHandler(userService *service.UserService) *UserHandler {
-	return &UserHandler{userService: userService}
+func NewUserHandler(service service.UserService) *UserHandler {
+	return &UserHandler{service: service}
 }
 
-// GetMe returns the currently authenticated user.
+func getUserID(c echo.Context) (uint, error) {
+	uid := c.Get("user_id")
+	if v, ok := uid.(uint); ok {
+		return v, nil
+	}
+	return 0, errors.New("user_id not found in context")
+}
+
 func (h *UserHandler) GetMe(c echo.Context) error {
-	userID, err := resolveCurrentUserID(c)
+	userID, err := getUserID(c)
 	if err != nil {
-		return utils.Error(c, http.StatusUnauthorized, err)
+		return c.JSON(http.StatusUnauthorized, echo.Map{"error": err.Error()})
 	}
-	user, err := h.userService.GetMe(c.Request().Context(), userID)
+
+	userResp, err := h.service.GetUser(userID)
 	if err != nil {
-		return utils.Error(c, http.StatusInternalServerError, err)
+		return c.JSON(http.StatusNotFound, echo.Map{"error": "user not found"})
 	}
-	return utils.Success(c, http.StatusOK, user)
+
+	return c.JSON(http.StatusOK, userResp)
 }
 
-// UpdateProfile patches the authenticated user's profile.
-func (h *UserHandler) UpdateProfile(c echo.Context) error {
-	userID, err := resolveCurrentUserID(c)
+func (h *UserHandler) UpdateMe(c echo.Context) error {
+	userID, err := getUserID(c)
 	if err != nil {
-		return utils.Error(c, http.StatusUnauthorized, err)
+		return c.JSON(http.StatusUnauthorized, echo.Map{"error": err.Error()})
 	}
-	var req dto.UpdateProfileRequest
-	if err := c.Bind(&req); err != nil {
-		return utils.Error(c, http.StatusBadRequest, err)
+
+	var updateDto dto.UpdateUserDTO
+	if err := c.Bind(&updateDto); err != nil {
+		return c.JSON(http.StatusBadRequest, echo.Map{"error": err.Error()})
 	}
-	user, err := h.userService.UpdateProfile(c.Request().Context(), userID, req)
+
+	// исправлено: разыменовываем указатели перед применением
+	user, err := h.service.UpdateUser(userID, updateDto)
 	if err != nil {
-		return utils.Error(c, http.StatusBadRequest, err)
+		return c.JSON(http.StatusBadRequest, echo.Map{"error": err.Error()})
 	}
-	return utils.Success(c, http.StatusOK, user)
+
+	return c.JSON(http.StatusOK, user)
 }
 
-// SearchUsers returns profiles matching the query.
+func (h *UserHandler) UploadAvatar(c echo.Context) error {
+	userID, err := getUserID(c)
+	if err != nil {
+		return c.JSON(http.StatusUnauthorized, echo.Map{"error": err.Error()})
+	}
+
+	file, err := c.FormFile("avatar")
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, echo.Map{"error": "avatar is required"})
+	}
+
+	if err := os.MkdirAll("uploads/avatars", 0755); err != nil {
+		return c.JSON(http.StatusInternalServerError, echo.Map{"error": err.Error()})
+	}
+
+	src, err := file.Open()
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, echo.Map{"error": err.Error()})
+	}
+	defer func(src multipart.File) {
+		err := src.Close()
+		if err != nil {
+
+		}
+	}(src)
+
+	ext := strings.ToLower(filepath.Ext(file.Filename))
+	newName := uuid.New().String() + ext
+	filePath := filepath.Join("uploads/avatars", newName)
+
+	dst, err := os.Create(filePath)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, echo.Map{"error": err.Error()})
+	}
+	defer func(dst *os.File) {
+		err := dst.Close()
+		if err != nil {
+
+		}
+	}(dst)
+
+	if _, err := io.Copy(dst, src); err != nil {
+		return c.JSON(http.StatusInternalServerError, echo.Map{"error": err.Error()})
+	}
+
+	avatarURL := "/" + filePath
+	if _, err := h.service.SetAvatar(userID, avatarURL); err != nil {
+		return c.JSON(http.StatusInternalServerError, echo.Map{"error": err.Error()})
+	}
+
+	userResp, err := h.service.GetUser(userID)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, echo.Map{"error": err.Error()})
+	}
+
+	return c.JSON(http.StatusOK, userResp)
+}
+
 func (h *UserHandler) SearchUsers(c echo.Context) error {
 	query := c.QueryParam("query")
-	if strings.TrimSpace(query) == "" {
-		return utils.Error(c, http.StatusBadRequest, errors.New("query is required"))
+	if query == "" {
+		return c.JSON(http.StatusBadRequest, echo.Map{"error": "query is required"})
 	}
 
-	limit := 25
-	if raw := c.QueryParam("limit"); raw != "" {
-		value, err := strconv.Atoi(raw)
-		if err != nil || value <= 0 {
-			return utils.Error(c, http.StatusBadRequest, errors.New("limit must be a positive integer"))
-		}
-		limit = value
-	}
-
-	users, err := h.userService.SearchUsers(c.Request().Context(), query, limit)
+	usersResp, err := h.service.SearchUsersWithCounts(query)
 	if err != nil {
-		return utils.Error(c, http.StatusInternalServerError, err)
+		return c.JSON(http.StatusInternalServerError, echo.Map{"error": err.Error()})
 	}
-	return utils.Success(c, http.StatusOK, users)
+
+	return c.JSON(http.StatusOK, usersResp)
 }
 
-// GetByID returns another user's profile.
-func (h *UserHandler) GetByID(c echo.Context) error {
-	id, err := parseUintParam(c.Param("id"))
+func (h *UserHandler) Follow(c echo.Context) error {
+	userID, err := getUserID(c)
 	if err != nil {
-		return utils.Error(c, http.StatusBadRequest, err)
+		return c.JSON(http.StatusUnauthorized, echo.Map{"error": err.Error()})
 	}
 
-	user, err := h.userService.GetUserByID(c.Request().Context(), id)
+	targetID, err := strconv.Atoi(c.Param("id"))
 	if err != nil {
-		if errors.Is(err, repository.ErrNotFound) {
-			return utils.Error(c, http.StatusNotFound, err)
-		}
-		return utils.Error(c, http.StatusInternalServerError, err)
+		return c.JSON(http.StatusBadRequest, echo.Map{"error": "invalid user id"})
 	}
-	return utils.Success(c, http.StatusOK, user)
+
+	if err := h.service.Follow(userID, uint(targetID)); err != nil {
+		return c.JSON(http.StatusBadRequest, echo.Map{"error": err.Error()})
+	}
+
+	return c.JSON(http.StatusOK, echo.Map{"status": "followed"})
+}
+
+func (h *UserHandler) Unfollow(c echo.Context) error {
+	userID, err := getUserID(c)
+	if err != nil {
+		return c.JSON(http.StatusUnauthorized, echo.Map{"error": err.Error()})
+	}
+
+	targetID, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, echo.Map{"error": "invalid user id"})
+	}
+
+	if err := h.service.Unfollow(userID, uint(targetID)); err != nil {
+		return c.JSON(http.StatusBadRequest, echo.Map{"error": err.Error()})
+	}
+
+	return c.JSON(http.StatusOK, echo.Map{"status": "unfollowed"})
 }
