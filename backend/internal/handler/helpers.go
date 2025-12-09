@@ -43,3 +43,11 @@ func parseUintParam(raw string) (uint, error) {
 	}
 	return uint(value), nil
 }
+
+func parseID(idStr string) uint {
+	id, err := strconv.ParseUint(idStr, 10, 64)
+	if err != nil {
+		return 0
+	}
+	return uint(id)
+}

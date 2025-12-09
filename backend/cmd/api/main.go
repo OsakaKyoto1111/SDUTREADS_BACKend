@@ -64,6 +64,24 @@ func main() {
 	userGroup.POST("/:id/follow", userHandler.Follow)
 	userGroup.DELETE("/:id/follow", userHandler.Unfollow)
 
+	postRepo := repository.NewPostRepository(db)
+	postService := service.NewPostService(postRepo)
+	postHandler := handler.NewPostHandler(postService)
+
+	postGroup := api.Group("/posts")
+	postGroup.Use(middleware.JWT(cfg.JWTSecret))
+
+	postGroup.POST("", postHandler.Create)
+	postGroup.PATCH("/:id", postHandler.Update)
+	postGroup.DELETE("/:id", postHandler.Delete)
+
+	postGroup.POST("/:id/files", postHandler.AddFiles)
+
+	postGroup.POST("/:id/comments", postHandler.AddComment)
+
+	postGroup.POST("/:id/like", postHandler.LikePost)
+	postGroup.DELETE("/:id/like", postHandler.UnlikePost)
+
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
