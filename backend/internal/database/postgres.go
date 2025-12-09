@@ -5,14 +5,23 @@ import (
 	"time"
 
 	"backend/internal/config"
-	"backend/internal/model"
+
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 )
 
-// InitPostgres opens a GORM connection and applies migrations.
 func InitPostgres(cfg *config.Config) (*gorm.DB, error) {
-	db, err := gorm.Open(postgres.Open(cfg.DatabaseDSN), &gorm.Config{})
+	var db *gorm.DB
+	var err error
+
+	for i := 0; i < 10; i++ {
+		db, err = gorm.Open(postgres.Open(cfg.DatabaseDSN), &gorm.Config{})
+		if err == nil {
+			break
+		}
+		log.Printf("Postgres not ready yet: %v (attempt %d/10)", err, i+1)
+		time.Sleep(2 * time.Second)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -25,10 +34,6 @@ func InitPostgres(cfg *config.Config) (*gorm.DB, error) {
 	sqlDB.SetMaxOpenConns(25)
 	sqlDB.SetMaxIdleConns(10)
 	sqlDB.SetConnMaxLifetime(5 * time.Minute)
-
-	if err := db.AutoMigrate(&model.User{}); err != nil {
-		return nil, err
-	}
 
 	log.Println("Postgres connected")
 	return db, nil
