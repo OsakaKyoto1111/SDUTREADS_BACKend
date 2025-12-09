@@ -54,7 +54,6 @@ func (s *AuthService) Register(req dto.RegisterRequest) (*dto.AuthResponse, erro
 		return nil, err
 	}
 
-	// build response with counts (all zero on fresh user)
 	return s.buildAuthResponse(user)
 }
 
@@ -79,7 +78,6 @@ func (s *AuthService) Login(req dto.LoginRequest) (*dto.AuthResponse, error) {
 }
 
 func (s *AuthService) buildAuthResponse(user *model.User) (*dto.AuthResponse, error) {
-	// get counts
 	postsCnt, err := s.repo.GetPostsCount(user.ID)
 	if err != nil {
 		return nil, err

@@ -43,7 +43,6 @@ func main() {
 	authHandler := handler.NewAuthHandler(authSvc)
 	userHandler := handler.NewUserHandler(userSvc)
 
-	// -------------------- Echo --------------------
 	e := echo.New()
 	e.Use(echoMiddleware.Logger())
 	e.Use(echoMiddleware.Recover())
@@ -51,7 +50,6 @@ func main() {
 
 	api := e.Group("/api")
 
-	// -------------------- Auth Routes --------------------
 	authGroup := api.Group("/auth")
 	authGroup.POST("/register", authHandler.Register)
 	authGroup.POST("/login", authHandler.Login)
@@ -66,7 +64,6 @@ func main() {
 	userGroup.POST("/:id/follow", userHandler.Follow)
 	userGroup.DELETE("/:id/follow", userHandler.Unfollow)
 
-	// -------------------- Graceful Shutdown --------------------
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 

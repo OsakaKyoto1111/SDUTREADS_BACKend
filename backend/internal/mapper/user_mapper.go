@@ -5,7 +5,6 @@ import (
 	"backend/internal/model"
 )
 
-// MapRegisterRequestToUser converts RegisterRequest -> model.User
 func MapRegisterRequestToUser(req dto.RegisterRequest, passwordHash string) *model.User {
 	return &model.User{
 		Email:        req.Email,
@@ -21,7 +20,6 @@ func MapRegisterRequestToUser(req dto.RegisterRequest, passwordHash string) *mod
 	}
 }
 
-// MapUserToResponseWithCounts converts model.User and counts -> dto.UserResponse
 func MapUserToResponseWithCounts(u *model.User, postsCount, followersCount, followingCount int64) dto.UserResponse {
 	return dto.UserResponse{
 		ID:       u.ID,
@@ -42,7 +40,6 @@ func MapUserToResponseWithCounts(u *model.User, postsCount, followersCount, foll
 	}
 }
 
-// ApplyUpdateUserDTO applies non-nil fields from DTO to model.User
 func ApplyUpdateUserDTO(u *model.User, dto dto.UpdateUserDTO) {
 	if dto.FirstName != nil {
 		u.FirstName = dto.FirstName

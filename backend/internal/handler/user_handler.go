@@ -5,7 +5,6 @@ import (
 	"backend/internal/service"
 	"errors"
 	"io"
-	"mime/multipart"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -85,12 +84,7 @@ func (h *UserHandler) UploadAvatar(c echo.Context) error {
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, echo.Map{"error": err.Error()})
 	}
-	defer func(src multipart.File) {
-		err := src.Close()
-		if err != nil {
-
-		}
-	}(src)
+	defer src.Close()
 
 	ext := strings.ToLower(filepath.Ext(file.Filename))
 	newName := uuid.New().String() + ext
@@ -100,18 +94,14 @@ func (h *UserHandler) UploadAvatar(c echo.Context) error {
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, echo.Map{"error": err.Error()})
 	}
-	defer func(dst *os.File) {
-		err := dst.Close()
-		if err != nil {
-
-		}
-	}(dst)
+	defer dst.Close()
 
 	if _, err := io.Copy(dst, src); err != nil {
 		return c.JSON(http.StatusInternalServerError, echo.Map{"error": err.Error()})
 	}
 
-	avatarURL := "/" + filePath
+	avatarURL := "/uploads/avatars/" + newName
+
 	if _, err := h.service.SetAvatar(userID, avatarURL); err != nil {
 		return c.JSON(http.StatusInternalServerError, echo.Map{"error": err.Error()})
 	}
