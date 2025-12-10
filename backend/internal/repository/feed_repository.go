@@ -20,7 +20,6 @@ func NewFeedRepository(db *gorm.DB) FeedRepository {
 	return &feedRepository{db: db}
 }
 
-// Get posts from users that 'userID' follows.
 func (r *feedRepository) GetFollowingPosts(userID uint, limit int, cursor *time.Time) ([]model.Post, error) {
 	var posts []model.Post
 

@@ -17,9 +17,9 @@ func NewFileHandler(s *service.FileService) *FileHandler {
 }
 
 func (h *FileHandler) Upload(c echo.Context) error {
-	postID, ok := parseIDParam(c, "id")
-	if ok != nil {
-		postID = 0 // for avatar upload, no post ID
+	postID, err := parseIDParam(c, "id")
+	if err != nil {
+		postID = 0
 	}
 
 	form, err := c.MultipartForm()

@@ -10,7 +10,6 @@ import (
 	"backend/internal/repository"
 )
 
-// FeedService defines feed behaviour
 type FeedService interface {
 	GetFeed(userID uint, limit int, cursor *time.Time) (*dto.FeedResponse, error)
 }
@@ -33,13 +32,11 @@ func (s *feedService) GetFeed(userID uint, limit int, cursor *time.Time) (*dto.F
 		limit = 20
 	}
 
-	// Following posts
 	following, err := s.repo.GetFollowingPosts(userID, limit, cursor)
 	if err != nil {
 		return nil, fmt.Errorf("get following posts: %w", err)
 	}
 
-	// Recommended
 	recCount := limit / MixRatio
 	if recCount < 1 {
 		recCount = 1
@@ -50,7 +47,6 @@ func (s *feedService) GetFeed(userID uint, limit int, cursor *time.Time) (*dto.F
 		recommended = []model.Post{}
 	}
 
-	// Mapping
 	followingDTO := mapper.MapPostsToDTO(following, userID)
 	recommendedDTO := mapper.MapPostsToDTO(recommended, userID)
 
@@ -71,7 +67,6 @@ func (s *feedService) GetFeed(userID uint, limit int, cursor *time.Time) (*dto.F
 		recIndex++
 	}
 
-	// cursor
 	var nextCursor *string
 	if len(following) > 0 {
 		t := following[len(following)-1].CreatedAt.UTC().Format(time.RFC3339)

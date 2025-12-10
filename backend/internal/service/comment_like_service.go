@@ -7,7 +7,6 @@ import (
 	"backend/internal/repository"
 )
 
-// CommentLikeService defines comment like behaviour
 type CommentLikeService interface {
 	Like(commentID, userID uint) (*dto.CommentLikeResponse, error)
 	Unlike(commentID, userID uint) (*dto.CommentLikeResponse, error)

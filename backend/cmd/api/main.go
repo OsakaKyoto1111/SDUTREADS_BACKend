@@ -32,27 +32,22 @@ func main() {
 		log.Fatalf("failed to connect to postgres: %v", err)
 	}
 
-	// repositories (construct concrete implementations that implement repository interfaces)
 	userRepo := repository.NewUserRepository(db)
 	postRepo := repository.NewPostRepository(db)
 	commentRepo := repository.NewCommentRepository(db)
 	commentLikeRepo := repository.NewCommentLikeRepository(db)
 	feedRepo := repository.NewFeedRepository(db)
 
-	// services (constructors should return interfaces)
-	authSvc := service.NewAuthService(userRepo, cfg.JWTSecret)            // AuthService
-	userSvc := service.NewUserService(userRepo)                           // UserService
-	commentLikeSvc := service.NewCommentLikeService(commentLikeRepo)      // CommentLikeService
-	commentSvc := service.NewCommentService(commentRepo, commentLikeRepo) // CommentService
+	authSvc := service.NewAuthService(userRepo, cfg.JWTSecret)
+	userSvc := service.NewUserService(userRepo)
+	commentLikeSvc := service.NewCommentLikeService(commentLikeRepo)
+	commentSvc := service.NewCommentService(commentRepo, commentLikeRepo)
 	commentTreeSvc := service.NewCommentTreeService(commentRepo, commentLikeRepo)
-	postSvc := service.NewPostService(postRepo, commentSvc, commentTreeSvc) // PostService
+	postSvc := service.NewPostService(postRepo, commentSvc, commentTreeSvc)
 
-	// file service: keep as concrete (pointer) or make it an interface — choose one
 	fileSvc := service.NewFileService("uploads", "/uploads/", 10*1024*1024, []string{"jpg", "jpeg", "png", "gif", "mp4"})
 
-	feedSvc := service.NewFeedService(feedRepo) // FeedService
-
-	// handlers accept interfaces (services) and *FileService for file operations
+	feedSvc := service.NewFeedService(feedRepo)
 	authHandler := handler.NewAuthHandler(authSvc)
 	userHandler := handler.NewUserHandler(userSvc)
 	postHandler := handler.NewPostHandler(postSvc, fileSvc)
@@ -71,6 +66,21 @@ func main() {
 	feedGroup := api.Group("/feed")
 	feedGroup.Use(middleware.JWT(cfg.JWTSecret))
 	feedGroup.GET("", feedHandler.Get)
+	api.GET("/debug/headers", func(c echo.Context) error {
+		return c.JSON(200, c.Request().Header)
+	})
+	api.GET("/debug/token", func(c echo.Context) error {
+		authHeader := c.Request().Header.Get("Authorization")
+		previewLen := 10
+		if len(cfg.JWTSecret) < previewLen {
+			previewLen = len(cfg.JWTSecret)
+		}
+		return c.JSON(200, map[string]interface{}{
+			"authorization_header": authHeader,
+			"jwt_secret_length":    len(cfg.JWTSecret),
+			"jwt_secret_preview":   cfg.JWTSecret[:previewLen] + "...",
+		})
+	})
 
 	authGroup := api.Group("/auth")
 	authGroup.POST("/register", authHandler.Register)
@@ -100,7 +110,6 @@ func main() {
 	postGroup.POST("/comments/:comment_id/like", commentLikeHandler.Like)
 	postGroup.DELETE("/comments/:comment_id/like", commentLikeHandler.Unlike)
 
-	// graceful shutdown
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 

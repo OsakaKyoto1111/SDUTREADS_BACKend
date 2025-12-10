@@ -13,7 +13,6 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
-// AuthService defines auth behaviour
 type AuthService interface {
 	Register(req dto.RegisterRequest) (*dto.AuthResponse, error)
 	Login(req dto.LoginRequest) (*dto.AuthResponse, error)
@@ -25,7 +24,10 @@ type authService struct {
 }
 
 func NewAuthService(repo repository.UserRepository, secret string) AuthService {
-	return &authService{repo: repo, jwtSecret: secret}
+	return &authService{
+		repo:      repo,
+		jwtSecret: secret,
+	}
 }
 
 func (s *authService) Register(req dto.RegisterRequest) (*dto.AuthResponse, error) {
@@ -66,11 +68,9 @@ func (s *authService) Login(req dto.LoginRequest) (*dto.AuthResponse, error) {
 
 	user, err := s.repo.GetByEmail(req.EmailOrUsername)
 	if err != nil && isRepoNotFound(err) {
-		// try nickname
 		user, err = s.repo.GetByNickname(req.EmailOrUsername)
 	}
 	if err != nil {
-		// do not expose whether email/nickname exists
 		return nil, fmt.Errorf("invalid credentials")
 	}
 
@@ -95,7 +95,7 @@ func (s *authService) buildAuthResponse(user *model.User) (*dto.AuthResponse, er
 		return nil, fmt.Errorf("count following: %w", err)
 	}
 
-	token, err := s.buildJWT(user)
+	token, err := s.generateAccessToken(user)
 	if err != nil {
 		return nil, fmt.Errorf("build token: %w", err)
 	}
@@ -106,14 +106,20 @@ func (s *authService) buildAuthResponse(user *model.User) (*dto.AuthResponse, er
 	}, nil
 }
 
-func (s *authService) buildJWT(user *model.User) (string, error) {
-	claims := dto.JwtCustomClaims{
+type JWTClaims struct {
+	UserID   uint   `json:"user_id"`
+	Nickname string `json:"nickname"`
+	jwt.RegisteredClaims
+}
+
+func (s *authService) generateAccessToken(user *model.User) (string, error) {
+	claims := JWTClaims{
 		UserID:   user.ID,
 		Nickname: user.Nickname,
 		RegisteredClaims: jwt.RegisteredClaims{
-			ExpiresAt: jwt.NewNumericDate(time.Now().Add(24 * time.Hour)),
 			IssuedAt:  jwt.NewNumericDate(time.Now()),
-			Subject:   user.Nickname,
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(365 * 24 * time.Hour)),
+			Subject:   fmt.Sprintf("%d", user.ID),
 		},
 	}
 

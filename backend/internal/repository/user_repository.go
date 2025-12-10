@@ -11,7 +11,6 @@ import (
 
 var ErrNotFound = fmt.Errorf("not found")
 
-// UserRepository defines behaviour for user persistence.
 type UserRepository interface {
 	Create(user *model.User) error
 	GetByID(id uint) (*model.User, error)

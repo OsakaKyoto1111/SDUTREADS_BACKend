@@ -9,7 +9,6 @@ import (
 	"backend/internal/repository"
 )
 
-// CommentService defines comment operations
 type CommentService interface {
 	AddComment(postID, userID uint, req dto.AddCommentRequest) error
 	GetCommentsTree(postID uint, userID uint, page, limit int) (*dto.CommentListResponse, error)
@@ -41,8 +40,6 @@ func (s *commentService) AddComment(postID, userID uint, req dto.AddCommentReque
 	return s.repo.Add(&comment)
 }
 
-// GetCommentsTree - returns paginated root comments and their entire reply trees.
-// page is 1-based. limit applies to root comments.
 func (s *commentService) GetCommentsTree(postID uint, userID uint, page, limit int) (*dto.CommentListResponse, error) {
 	if page < 1 {
 		page = 1
@@ -54,13 +51,11 @@ func (s *commentService) GetCommentsTree(postID uint, userID uint, page, limit i
 		return nil, fmt.Errorf("invalid post id")
 	}
 
-	// 1) load all comments for the post
 	allComments, err := s.repo.GetCommentsByPostID(postID)
 	if err != nil {
 		return nil, fmt.Errorf("load comments: %w", err)
 	}
 
-	// early exit
 	if len(allComments) == 0 {
 		return &dto.CommentListResponse{
 			Comments: []dto.CommentDTO{},
@@ -70,7 +65,6 @@ func (s *commentService) GetCommentsTree(postID uint, userID uint, page, limit i
 		}, nil
 	}
 
-	// 2) prepare ids and mapping
 	allIDs := make([]uint, 0, len(allComments))
 	for _, c := range allComments {
 		allIDs = append(allIDs, c.ID)
@@ -84,7 +78,6 @@ func (s *commentService) GetCommentsTree(postID uint, userID uint, page, limit i
 		return nil, fmt.Errorf("liked by user: %w", err)
 	}
 
-	// node storage
 	type node struct {
 		dto dto.CommentDTO
 		raw model.Comment
@@ -126,19 +119,15 @@ func (s *commentService) GetCommentsTree(postID uint, userID uint, page, limit i
 		}
 	}
 
-	// sort roots newest first
 	sort.Slice(roots, func(i, j int) bool {
 		return nodes[roots[i]].raw.CreatedAt.After(nodes[roots[j]].raw.CreatedAt)
 	})
 
-	// build tree with cycle protection
 	for _, n := range nodes {
 		if n.dto.ParentID != nil {
 			parent, ok := nodes[*n.dto.ParentID]
 			if ok {
-				// detect simple cycle (parent points to child)
 				if parent.dto.ParentID != nil && *parent.dto.ParentID == n.dto.ID {
-					// break cycle by ignoring parent relationship (safe fallback)
 					continue
 				}
 				parent.dto.Replies = append(parent.dto.Replies, n.dto)
@@ -146,7 +135,6 @@ func (s *commentService) GetCommentsTree(postID uint, userID uint, page, limit i
 		}
 	}
 
-	// sort replies by created_at ASC
 	for _, n := range nodes {
 		if len(n.dto.Replies) > 1 {
 			sort.Slice(n.dto.Replies, func(i, j int) bool {
@@ -155,7 +143,6 @@ func (s *commentService) GetCommentsTree(postID uint, userID uint, page, limit i
 		}
 	}
 
-	// paginate roots
 	totalRoots := len(roots)
 	start := (page - 1) * limit
 	if start > totalRoots {

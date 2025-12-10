@@ -9,7 +9,6 @@ func MapPostsToDTO(posts []model.Post, userID uint) []dto.PostResponse {
 	result := make([]dto.PostResponse, 0, len(posts))
 
 	for _, p := range posts {
-		// files
 		files := make([]dto.FileResponse, 0, len(p.Files))
 		for _, f := range p.Files {
 			files = append(files, dto.FileResponse{
@@ -18,7 +17,6 @@ func MapPostsToDTO(posts []model.Post, userID uint) []dto.PostResponse {
 			})
 		}
 
-		// is liked
 		isLiked := false
 		for _, l := range p.Likes {
 			if l.UserID == userID {
@@ -32,7 +30,7 @@ func MapPostsToDTO(posts []model.Post, userID uint) []dto.PostResponse {
 			Description: p.Description,
 			Files:       files,
 			LikesCount:  len(p.Likes),
-			Comments:    len(p.Comments), // только count!
+			Comments:    len(p.Comments),
 			IsLiked:     isLiked,
 		})
 	}

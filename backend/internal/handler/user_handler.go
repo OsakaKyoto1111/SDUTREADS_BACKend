@@ -20,7 +20,6 @@ func NewUserHandler(s service.UserService) *UserHandler {
 func (h *UserHandler) GetProfile(c echo.Context) error {
 	idStr := c.Param("id")
 
-	// GET /user/me
 	if idStr == "" {
 		userID, ok := GetUserIDFromContext(c)
 		if !ok {
@@ -33,7 +32,6 @@ func (h *UserHandler) GetProfile(c echo.Context) error {
 		return respondJSON(c, http.StatusOK, resp)
 	}
 
-	// GET /user/:id
 	id, err := parseIDParam(c, "id")
 	if err != nil {
 		httpErr := err.(*echo.HTTPError)

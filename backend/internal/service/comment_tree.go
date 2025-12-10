@@ -7,7 +7,6 @@ import (
 	"backend/internal/repository"
 )
 
-// CommentTreeService builds comment tree view
 type CommentTreeService interface {
 	GetCommentTree(postID, userID uint) ([]dto.CommentTree, error)
 }
@@ -31,12 +30,11 @@ func (s *commentTreeService) GetCommentTree(postID, userID uint) ([]dto.CommentT
 		return nil, fmt.Errorf("load comments flat: %w", err)
 	}
 
-	// Convert to DTO map
 	dtoMap := map[uint]*dto.CommentTree{}
 	var roots []dto.CommentTree
 
 	for _, c := range comments {
-		isLiked, _ := s.likeRepo.IsLiked(c.ID, userID) // ignore error, best-effort
+		isLiked, _ := s.likeRepo.IsLiked(c.ID, userID)
 
 		node := &dto.CommentTree{
 			ID:        c.ID,
@@ -58,7 +56,6 @@ func (s *commentTreeService) GetCommentTree(postID, userID uint) ([]dto.CommentT
 		dtoMap[c.ID] = node
 	}
 
-	// Build tree with simple cycle protection
 	for id, node := range dtoMap {
 		if node.ParentID == nil {
 			roots = append(roots, *node)
@@ -66,13 +63,10 @@ func (s *commentTreeService) GetCommentTree(postID, userID uint) ([]dto.CommentT
 		}
 		parent, ok := dtoMap[*node.ParentID]
 		if !ok {
-			// parent missing — promote to root
 			roots = append(roots, *node)
 			continue
 		}
-		// simple cycle detection: if parent points to child
 		if parent.ParentID != nil && *parent.ParentID == id {
-			// break the cycle by promoting node to root
 			roots = append(roots, *node)
 			continue
 		}
