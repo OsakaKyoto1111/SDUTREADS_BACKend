@@ -32,31 +32,34 @@ func main() {
 		log.Fatalf("failed to connect to postgres: %v", err)
 	}
 
+	// repositories (construct concrete implementations that implement repository interfaces)
 	userRepo := repository.NewUserRepository(db)
 	postRepo := repository.NewPostRepository(db)
 	commentRepo := repository.NewCommentRepository(db)
 	commentLikeRepo := repository.NewCommentLikeRepository(db)
 	feedRepo := repository.NewFeedRepository(db)
 
-	authSvc := service.NewAuthService(userRepo, cfg.JWTSecret)
-	userSvc := service.NewUserService(userRepo)
-
-	commentLikeSvc := service.NewCommentLikeService(commentLikeRepo)
-	commentSvc := service.NewCommentService(commentRepo, commentLikeRepo)
-
+	// services (constructors should return interfaces)
+	authSvc := service.NewAuthService(userRepo, cfg.JWTSecret)            // AuthService
+	userSvc := service.NewUserService(userRepo)                           // UserService
+	commentLikeSvc := service.NewCommentLikeService(commentLikeRepo)      // CommentLikeService
+	commentSvc := service.NewCommentService(commentRepo, commentLikeRepo) // CommentService
 	commentTreeSvc := service.NewCommentTreeService(commentRepo, commentLikeRepo)
-	postSvc := service.NewPostService(postRepo, commentSvc, commentTreeSvc)
+	postSvc := service.NewPostService(postRepo, commentSvc, commentTreeSvc) // PostService
 
+	// file service: keep as concrete (pointer) or make it an interface — choose one
 	fileSvc := service.NewFileService("uploads", "/uploads/", 10*1024*1024, []string{"jpg", "jpeg", "png", "gif", "mp4"})
 
-	feedSvc := service.NewFeedService(feedRepo)
+	feedSvc := service.NewFeedService(feedRepo) // FeedService
 
+	// handlers accept interfaces (services) and *FileService for file operations
 	authHandler := handler.NewAuthHandler(authSvc)
 	userHandler := handler.NewUserHandler(userSvc)
 	postHandler := handler.NewPostHandler(postSvc, fileSvc)
 	commentHandler := handler.NewCommentHandler(commentSvc)
 	commentLikeHandler := handler.NewCommentLikeHandler(commentLikeSvc)
 	feedHandler := handler.NewFeedHandler(feedSvc)
+	fileHandler := handler.NewFileHandler(fileSvc)
 
 	e := echo.New()
 	e.Use(echoMiddleware.Logger())
@@ -67,7 +70,7 @@ func main() {
 
 	feedGroup := api.Group("/feed")
 	feedGroup.Use(middleware.JWT(cfg.JWTSecret))
-	feedGroup.GET("", feedHandler.GetFeed)
+	feedGroup.GET("", feedHandler.Get)
 
 	authGroup := api.Group("/auth")
 	authGroup.POST("/register", authHandler.Register)
@@ -75,29 +78,29 @@ func main() {
 
 	userGroup := api.Group("/user")
 	userGroup.Use(middleware.JWT(cfg.JWTSecret))
-	userGroup.GET("/me", userHandler.GetMe)
-	userGroup.PATCH("/me", userHandler.UpdateMe)
-	userGroup.POST("/avatar", userHandler.UploadAvatar)
-	userGroup.GET("/search", userHandler.SearchUsers)
+	userGroup.GET("/me", userHandler.GetProfile)
+	userGroup.PATCH("/me", userHandler.Update)
+	userGroup.DELETE("/me", userHandler.Delete)
+	userGroup.GET("/search", userHandler.Search)
 	userGroup.POST("/:id/follow", userHandler.Follow)
 	userGroup.DELETE("/:id/follow", userHandler.Unfollow)
+	userGroup.POST("/avatar", fileHandler.Upload)
 
 	postGroup := api.Group("/posts")
 	postGroup.Use(middleware.JWT(cfg.JWTSecret))
-
 	postGroup.POST("", postHandler.Create)
-	postGroup.GET("/:id", postHandler.GetPost)
+	postGroup.GET("/:id", postHandler.Get)
 	postGroup.PATCH("/:id", postHandler.Update)
 	postGroup.DELETE("/:id", postHandler.Delete)
 	postGroup.POST("/:id/files", postHandler.AddFiles)
-	postGroup.POST("/:id/like", postHandler.LikePost)
-	postGroup.DELETE("/:id/like", postHandler.UnlikePost)
-
-	postGroup.GET("/:id/comments", commentHandler.Get)  // paginated root comments + replies
-	postGroup.POST("/:id/comments", commentHandler.Add) // add comment to post
+	postGroup.POST("/:id/like", postHandler.Like)
+	postGroup.DELETE("/:id/like", postHandler.Unlike)
+	postGroup.GET("/:id/comments", commentHandler.GetTree)
+	postGroup.POST("/:id/comments", commentHandler.Add)
 	postGroup.POST("/comments/:comment_id/like", commentLikeHandler.Like)
 	postGroup.DELETE("/comments/:comment_id/like", commentLikeHandler.Unlike)
 
+	// graceful shutdown
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 

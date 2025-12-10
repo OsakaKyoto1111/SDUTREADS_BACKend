@@ -5,43 +5,38 @@ import (
 
 	"backend/internal/dto"
 	"backend/internal/service"
-	"backend/internal/utils"
 
 	"github.com/labstack/echo/v4"
 )
 
 type AuthHandler struct {
-	authService *service.AuthService
+	svc service.AuthService
 }
 
-func NewAuthHandler(authService *service.AuthService) *AuthHandler {
-	return &AuthHandler{authService: authService}
+func NewAuthHandler(s service.AuthService) *AuthHandler {
+	return &AuthHandler{svc: s}
 }
 
 func (h *AuthHandler) Register(c echo.Context) error {
 	var req dto.RegisterRequest
-	if err := c.Bind(&req); err != nil {
-		return utils.Error(c, http.StatusBadRequest, err)
+	if err := bindJSON(c, &req); err != nil {
+		return respondError(c, http.StatusBadRequest, err.Error())
 	}
-
-	authResp, err := h.authService.Register(req)
+	resp, err := h.svc.Register(req)
 	if err != nil {
-		return utils.Error(c, http.StatusBadRequest, err)
+		return respondError(c, http.StatusBadRequest, err.Error())
 	}
-
-	return utils.Success(c, http.StatusCreated, authResp)
+	return respondJSON(c, http.StatusOK, resp)
 }
 
 func (h *AuthHandler) Login(c echo.Context) error {
 	var req dto.LoginRequest
-	if err := c.Bind(&req); err != nil {
-		return utils.Error(c, http.StatusBadRequest, err)
+	if err := bindJSON(c, &req); err != nil {
+		return respondError(c, http.StatusBadRequest, err.Error())
 	}
-
-	authResp, err := h.authService.Login(req)
+	resp, err := h.svc.Login(req)
 	if err != nil {
-		return utils.Error(c, http.StatusUnauthorized, err)
+		return respondError(c, http.StatusUnauthorized, err.Error())
 	}
-
-	return utils.Success(c, http.StatusOK, authResp)
+	return respondJSON(c, http.StatusOK, resp)
 }

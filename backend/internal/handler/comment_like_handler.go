@@ -1,49 +1,55 @@
 package handler
 
 import (
-	"backend/internal/service"
 	"net/http"
-	"strconv"
+
+	"backend/internal/service"
 
 	"github.com/labstack/echo/v4"
 )
 
 type CommentLikeHandler struct {
-	service service.CommentLikeService
+	svc service.CommentLikeService
 }
 
-func NewCommentLikeHandler(service service.CommentLikeService) *CommentLikeHandler {
-	return &CommentLikeHandler{service: service}
+func NewCommentLikeHandler(s service.CommentLikeService) *CommentLikeHandler {
+	return &CommentLikeHandler{svc: s}
 }
 
 func (h *CommentLikeHandler) Like(c echo.Context) error {
-	userID := c.Get("user_id").(uint)
-
-	commentID, err := strconv.Atoi(c.Param("comment_id"))
-	if err != nil {
-		return c.JSON(http.StatusBadRequest, echo.Map{"error": "invalid comment id"})
+	userID, ok := requireAuth(c)
+	if !ok {
+		return nil
 	}
 
-	resp, err := h.service.Like(uint(commentID), userID)
+	commentID, err := parseIDParam(c, "comment_id")
 	if err != nil {
-		return c.JSON(http.StatusBadRequest, echo.Map{"error": err.Error()})
+		return respondError(c, http.StatusBadRequest, "invalid id")
 	}
 
-	return c.JSON(http.StatusOK, resp)
+	resp, err := h.svc.Like(commentID, userID)
+	if err != nil {
+		return respondError(c, http.StatusBadRequest, err.Error())
+	}
+
+	return respondJSON(c, http.StatusOK, resp)
 }
 
 func (h *CommentLikeHandler) Unlike(c echo.Context) error {
-	userID := c.Get("user_id").(uint)
-
-	commentID, err := strconv.Atoi(c.Param("comment_id"))
-	if err != nil {
-		return c.JSON(http.StatusBadRequest, echo.Map{"error": "invalid comment id"})
+	userID, ok := requireAuth(c)
+	if !ok {
+		return nil
 	}
 
-	resp, err := h.service.Unlike(uint(commentID), userID)
+	commentID, err := parseIDParam(c, "comment_id")
 	if err != nil {
-		return c.JSON(http.StatusBadRequest, echo.Map{"error": err.Error()})
+		return respondError(c, http.StatusBadRequest, "invalid id")
 	}
 
-	return c.JSON(http.StatusOK, resp)
+	resp, err := h.svc.Unlike(commentID, userID)
+	if err != nil {
+		return respondError(c, http.StatusBadRequest, err.Error())
+	}
+
+	return respondJSON(c, http.StatusOK, resp)
 }

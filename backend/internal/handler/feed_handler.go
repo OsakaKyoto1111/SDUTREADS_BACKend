@@ -1,42 +1,44 @@
 package handler
 
 import (
-	"backend/internal/service"
 	"net/http"
+	"strconv"
 	"time"
+
+	"backend/internal/service"
 
 	"github.com/labstack/echo/v4"
 )
 
 type FeedHandler struct {
-	service *service.FeedService
+	svc service.FeedService
 }
 
-func NewFeedHandler(s *service.FeedService) *FeedHandler {
-	return &FeedHandler{s}
+func NewFeedHandler(s service.FeedService) *FeedHandler {
+	return &FeedHandler{svc: s}
 }
 
-func (h *FeedHandler) GetFeed(c echo.Context) error {
-	userID, ok := getUserIDFromContext(c)
+func (h *FeedHandler) Get(c echo.Context) error {
+	userID, ok := requireAuth(c)
 	if !ok {
-		return c.JSON(http.StatusUnauthorized, echo.Map{"error": "unauthorized"})
+		return nil
 	}
 
-	limit := 20
-	cursorParam := c.QueryParam("cursor")
+	limit, _ := strconv.Atoi(c.QueryParam("limit"))
 
-	var cursor *time.Time = nil
-	if cursorParam != "" {
-		t, err := time.Parse(time.RFC3339, cursorParam)
+	cursorStr := c.QueryParam("cursor")
+	var cursor *time.Time
+	if cursorStr != "" {
+		t, err := time.Parse(time.RFC3339, cursorStr)
 		if err == nil {
 			cursor = &t
 		}
 	}
 
-	resp, err := h.service.GetFeed(userID, limit, cursor)
+	resp, err := h.svc.GetFeed(userID, limit, cursor)
 	if err != nil {
-		return c.JSON(http.StatusInternalServerError, echo.Map{"error": err.Error()})
+		return respondError(c, http.StatusInternalServerError, err.Error())
 	}
 
-	return c.JSON(http.StatusOK, resp)
+	return respondJSON(c, http.StatusOK, resp)
 }

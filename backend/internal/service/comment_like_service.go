@@ -1,44 +1,42 @@
 package service
 
 import (
+	"fmt"
+
 	"backend/internal/dto"
 	"backend/internal/repository"
-	"errors"
 )
 
+// CommentLikeService defines comment like behaviour
 type CommentLikeService interface {
-	Like(commentID uint, userID uint) (*dto.CommentLikeResponse, error)
-	Unlike(commentID uint, userID uint) (*dto.CommentLikeResponse, error)
+	Like(commentID, userID uint) (*dto.CommentLikeResponse, error)
+	Unlike(commentID, userID uint) (*dto.CommentLikeResponse, error)
 }
 
 type commentLikeService struct {
 	repo repository.CommentLikeRepository
 }
 
-func NewCommentLikeService(repo repository.CommentLikeRepository) CommentLikeService {
-	return &commentLikeService{repo: repo}
+func NewCommentLikeService(r repository.CommentLikeRepository) CommentLikeService {
+	return &commentLikeService{repo: r}
 }
 
 func (s *commentLikeService) Like(commentID uint, userID uint) (*dto.CommentLikeResponse, error) {
-	err := s.repo.LikeComment(commentID, userID)
-	if err != nil {
-		return nil, errors.New("failed to like comment")
+	if commentID == 0 || userID == 0 {
+		return nil, fmt.Errorf("invalid ids")
 	}
-
-	return &dto.CommentLikeResponse{
-		CommentID: commentID,
-		Liked:     true,
-	}, nil
+	if err := s.repo.LikeComment(commentID, userID); err != nil {
+		return nil, fmt.Errorf("like comment: %w", err)
+	}
+	return &dto.CommentLikeResponse{CommentID: commentID, Liked: true}, nil
 }
 
 func (s *commentLikeService) Unlike(commentID uint, userID uint) (*dto.CommentLikeResponse, error) {
-	err := s.repo.UnlikeComment(commentID, userID)
-	if err != nil {
-		return nil, errors.New("failed to unlike comment")
+	if commentID == 0 || userID == 0 {
+		return nil, fmt.Errorf("invalid ids")
 	}
-
-	return &dto.CommentLikeResponse{
-		CommentID: commentID,
-		Liked:     false,
-	}, nil
+	if err := s.repo.UnlikeComment(commentID, userID); err != nil {
+		return nil, fmt.Errorf("unlike comment: %w", err)
+	}
+	return &dto.CommentLikeResponse{CommentID: commentID, Liked: false}, nil
 }

@@ -1,11 +1,12 @@
 package service
 
 import (
+	"fmt"
+
 	"backend/internal/dto"
 	"backend/internal/mapper"
 	"backend/internal/model"
 	"backend/internal/repository"
-	"errors"
 )
 
 type UserService interface {
@@ -30,7 +31,7 @@ func NewUserService(repo repository.UserRepository) UserService {
 func (s *userService) SearchUsersWithCounts(query string) ([]dto.UserResponse, error) {
 	users, err := s.repo.Search(query)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("search users: %w", err)
 	}
 
 	var usersResp []dto.UserResponse
@@ -38,51 +39,55 @@ func (s *userService) SearchUsersWithCounts(query string) ([]dto.UserResponse, e
 		postsCnt, _ := s.repo.GetPostsCount(u.ID)
 		followersCnt, _ := s.repo.GetFollowersCount(u.ID)
 		followingCnt, _ := s.repo.GetFollowingCount(u.ID)
-		usersResp = append(usersResp, mapper.MapUserToResponseWithCounts(&u, postsCnt, followersCnt, followingCnt))
+		usersResp = append(usersResp,
+			mapper.MapUserToResponseWithCounts(&u, postsCnt, followersCnt, followingCnt),
+		)
 	}
 
 	return usersResp, nil
 }
 
 func (s *userService) GetUser(id uint) (*dto.UserResponse, error) {
-	user, err := s.repo.GetByID(id)
-	if err != nil {
-		return nil, err
+	if id == 0 {
+		return nil, fmt.Errorf("invalid id")
 	}
 
-	postsCnt, err := s.repo.GetPostsCount(id)
+	user, err := s.repo.GetByID(id)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("get user: %w", err)
 	}
-	followersCnt, err := s.repo.GetFollowersCount(id)
-	if err != nil {
-		return nil, err
-	}
-	followingCnt, err := s.repo.GetFollowingCount(id)
-	if err != nil {
-		return nil, err
-	}
+
+	postsCnt, _ := s.repo.GetPostsCount(id)
+	followersCnt, _ := s.repo.GetFollowersCount(id)
+	followingCnt, _ := s.repo.GetFollowingCount(id)
 
 	resp := mapper.MapUserToResponseWithCounts(user, postsCnt, followersCnt, followingCnt)
 	return &resp, nil
 }
 
 func (s *userService) UpdateUser(id uint, dto dto.UpdateUserDTO) (*model.User, error) {
+	if id == 0 {
+		return nil, fmt.Errorf("invalid id")
+	}
+
 	user, err := s.repo.GetByID(id)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("get user: %w", err)
 	}
 
 	mapper.ApplyUpdateUserDTO(user, dto)
 
 	if err := s.repo.Update(user); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("update user: %w", err)
 	}
 
 	return user, nil
 }
 
 func (s *userService) DeleteUser(id uint) error {
+	if id == 0 {
+		return fmt.Errorf("invalid id")
+	}
 	return s.repo.Delete(id)
 }
 
@@ -91,23 +96,37 @@ func (s *userService) SearchUsers(query string) ([]model.User, error) {
 }
 
 func (s *userService) SetAvatar(id uint, avatarURL string) (*model.User, error) {
+	if id == 0 {
+		return nil, fmt.Errorf("invalid id")
+	}
+
 	user, err := s.repo.GetByID(id)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("get user: %w", err)
 	}
 
 	user.AvatarURL = &avatarURL
-	err = s.repo.Update(user)
-	return user, err
+
+	if err := s.repo.Update(user); err != nil {
+		return nil, fmt.Errorf("set avatar: %w", err)
+	}
+
+	return user, nil
 }
 
 func (s *userService) Follow(userID uint, targetID uint) error {
+	if userID == 0 || targetID == 0 {
+		return fmt.Errorf("invalid ids")
+	}
 	if userID == targetID {
-		return errors.New("cannot follow yourself")
+		return fmt.Errorf("cannot follow yourself")
 	}
 	return s.repo.Follow(userID, targetID)
 }
 
 func (s *userService) Unfollow(userID uint, targetID uint) error {
+	if userID == 0 || targetID == 0 {
+		return fmt.Errorf("invalid ids")
+	}
 	return s.repo.Unfollow(userID, targetID)
 }

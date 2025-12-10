@@ -1,165 +1,126 @@
 package handler
 
 import (
+	"net/http"
+
 	"backend/internal/dto"
 	"backend/internal/service"
-	"errors"
-	"io"
-	"net/http"
-	"os"
-	"path/filepath"
-	"strconv"
-	"strings"
 
-	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
 )
 
 type UserHandler struct {
-	service service.UserService
+	svc service.UserService
 }
 
-func NewUserHandler(service service.UserService) *UserHandler {
-	return &UserHandler{service: service}
+func NewUserHandler(s service.UserService) *UserHandler {
+	return &UserHandler{svc: s}
 }
 
-func getUserID(c echo.Context) (uint, error) {
-	uid := c.Get("user_id")
-	if v, ok := uid.(uint); ok {
-		return v, nil
+func (h *UserHandler) GetProfile(c echo.Context) error {
+	idStr := c.Param("id")
+
+	// GET /user/me
+	if idStr == "" {
+		userID, ok := GetUserIDFromContext(c)
+		if !ok {
+			return respondError(c, http.StatusUnauthorized, "unauthorized")
+		}
+		resp, err := h.svc.GetUser(userID)
+		if err != nil {
+			return respondError(c, http.StatusInternalServerError, err.Error())
+		}
+		return respondJSON(c, http.StatusOK, resp)
 	}
-	return 0, errors.New("user_id not found in context")
+
+	// GET /user/:id
+	id, err := parseIDParam(c, "id")
+	if err != nil {
+		httpErr := err.(*echo.HTTPError)
+		return respondError(c, httpErr.Code, httpErr.Message.(string))
+	}
+
+	resp, err := h.svc.GetUser(id)
+	if err != nil {
+		return respondError(c, http.StatusInternalServerError, err.Error())
+	}
+	return respondJSON(c, http.StatusOK, resp)
 }
 
-func (h *UserHandler) GetMe(c echo.Context) error {
-	userID, err := getUserID(c)
-	if err != nil {
-		return c.JSON(http.StatusUnauthorized, echo.Map{"error": err.Error()})
+func (h *UserHandler) Update(c echo.Context) error {
+	userID, ok := requireAuth(c)
+	if !ok {
+		return nil
 	}
 
-	userResp, err := h.service.GetUser(userID)
-	if err != nil {
-		return c.JSON(http.StatusNotFound, echo.Map{"error": "user not found"})
+	var body dto.UpdateUserDTO
+	if err := bindJSON(c, &body); err != nil {
+		return respondError(c, http.StatusBadRequest, err.Error())
 	}
 
-	return c.JSON(http.StatusOK, userResp)
+	updated, err := h.svc.UpdateUser(userID, body)
+	if err != nil {
+		return respondError(c, http.StatusInternalServerError, err.Error())
+	}
+	return respondJSON(c, http.StatusOK, updated)
 }
 
-func (h *UserHandler) UpdateMe(c echo.Context) error {
-	userID, err := getUserID(c)
-	if err != nil {
-		return c.JSON(http.StatusUnauthorized, echo.Map{"error": err.Error()})
+func (h *UserHandler) Delete(c echo.Context) error {
+	userID, ok := requireAuth(c)
+	if !ok {
+		return nil
 	}
 
-	var updateDto dto.UpdateUserDTO
-	if err := c.Bind(&updateDto); err != nil {
-		return c.JSON(http.StatusBadRequest, echo.Map{"error": err.Error()})
+	if err := h.svc.DeleteUser(userID); err != nil {
+		return respondError(c, http.StatusInternalServerError, err.Error())
 	}
 
-	// исправлено: разыменовываем указатели перед применением
-	user, err := h.service.UpdateUser(userID, updateDto)
-	if err != nil {
-		return c.JSON(http.StatusBadRequest, echo.Map{"error": err.Error()})
-	}
-
-	return c.JSON(http.StatusOK, user)
+	return respondJSON(c, http.StatusOK, echo.Map{"message": "user deleted"})
 }
 
-func (h *UserHandler) UploadAvatar(c echo.Context) error {
-	userID, err := getUserID(c)
+func (h *UserHandler) Search(c echo.Context) error {
+	q := c.QueryParam("q")
+	users, err := h.svc.SearchUsersWithCounts(q)
 	if err != nil {
-		return c.JSON(http.StatusUnauthorized, echo.Map{"error": err.Error()})
+		return respondError(c, http.StatusInternalServerError, err.Error())
 	}
-
-	file, err := c.FormFile("avatar")
-	if err != nil {
-		return c.JSON(http.StatusBadRequest, echo.Map{"error": "avatar is required"})
-	}
-
-	if err := os.MkdirAll("uploads/avatars", 0755); err != nil {
-		return c.JSON(http.StatusInternalServerError, echo.Map{"error": err.Error()})
-	}
-
-	src, err := file.Open()
-	if err != nil {
-		return c.JSON(http.StatusInternalServerError, echo.Map{"error": err.Error()})
-	}
-	defer src.Close()
-
-	ext := strings.ToLower(filepath.Ext(file.Filename))
-	newName := uuid.New().String() + ext
-	filePath := filepath.Join("uploads/avatars", newName)
-
-	dst, err := os.Create(filePath)
-	if err != nil {
-		return c.JSON(http.StatusInternalServerError, echo.Map{"error": err.Error()})
-	}
-	defer dst.Close()
-
-	if _, err := io.Copy(dst, src); err != nil {
-		return c.JSON(http.StatusInternalServerError, echo.Map{"error": err.Error()})
-	}
-
-	avatarURL := "/uploads/avatars/" + newName
-
-	if _, err := h.service.SetAvatar(userID, avatarURL); err != nil {
-		return c.JSON(http.StatusInternalServerError, echo.Map{"error": err.Error()})
-	}
-
-	userResp, err := h.service.GetUser(userID)
-	if err != nil {
-		return c.JSON(http.StatusInternalServerError, echo.Map{"error": err.Error()})
-	}
-
-	return c.JSON(http.StatusOK, userResp)
-}
-
-func (h *UserHandler) SearchUsers(c echo.Context) error {
-	query := c.QueryParam("query")
-	if query == "" {
-		return c.JSON(http.StatusBadRequest, echo.Map{"error": "query is required"})
-	}
-
-	usersResp, err := h.service.SearchUsersWithCounts(query)
-	if err != nil {
-		return c.JSON(http.StatusInternalServerError, echo.Map{"error": err.Error()})
-	}
-
-	return c.JSON(http.StatusOK, usersResp)
+	return respondJSON(c, http.StatusOK, users)
 }
 
 func (h *UserHandler) Follow(c echo.Context) error {
-	userID, err := getUserID(c)
+	userID, ok := requireAuth(c)
+	if !ok {
+		return nil
+	}
+
+	targetID, err := parseIDParam(c, "id")
 	if err != nil {
-		return c.JSON(http.StatusUnauthorized, echo.Map{"error": err.Error()})
+		httpErr := err.(*echo.HTTPError)
+		return respondError(c, httpErr.Code, httpErr.Message.(string))
 	}
 
-	targetID, err := strconv.Atoi(c.Param("id"))
-	if err != nil {
-		return c.JSON(http.StatusBadRequest, echo.Map{"error": "invalid user id"})
+	if err := h.svc.Follow(userID, targetID); err != nil {
+		return respondError(c, http.StatusBadRequest, err.Error())
 	}
 
-	if err := h.service.Follow(userID, uint(targetID)); err != nil {
-		return c.JSON(http.StatusBadRequest, echo.Map{"error": err.Error()})
-	}
-
-	return c.JSON(http.StatusOK, echo.Map{"status": "followed"})
+	return respondJSON(c, http.StatusOK, echo.Map{"message": "followed"})
 }
 
 func (h *UserHandler) Unfollow(c echo.Context) error {
-	userID, err := getUserID(c)
+	userID, ok := requireAuth(c)
+	if !ok {
+		return nil
+	}
+
+	targetID, err := parseIDParam(c, "id")
 	if err != nil {
-		return c.JSON(http.StatusUnauthorized, echo.Map{"error": err.Error()})
+		httpErr := err.(*echo.HTTPError)
+		return respondError(c, httpErr.Code, httpErr.Message.(string))
 	}
 
-	targetID, err := strconv.Atoi(c.Param("id"))
-	if err != nil {
-		return c.JSON(http.StatusBadRequest, echo.Map{"error": "invalid user id"})
+	if err := h.svc.Unfollow(userID, targetID); err != nil {
+		return respondError(c, http.StatusBadRequest, err.Error())
 	}
 
-	if err := h.service.Unfollow(userID, uint(targetID)); err != nil {
-		return c.JSON(http.StatusBadRequest, echo.Map{"error": err.Error()})
-	}
-
-	return c.JSON(http.StatusOK, echo.Map{"status": "unfollowed"})
+	return respondJSON(c, http.StatusOK, echo.Map{"message": "unfollowed"})
 }

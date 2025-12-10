@@ -1,27 +1,42 @@
 package service
 
 import (
+	"backend/internal/model"
+	"fmt"
+	"time"
+
 	"backend/internal/dto"
 	"backend/internal/mapper"
 	"backend/internal/repository"
-	"time"
 )
 
-type FeedService struct {
-	repo *repository.FeedRepository
+// FeedService defines feed behaviour
+type FeedService interface {
+	GetFeed(userID uint, limit int, cursor *time.Time) (*dto.FeedResponse, error)
 }
 
-func NewFeedService(repo *repository.FeedRepository) *FeedService {
-	return &FeedService{repo: repo}
+type feedService struct {
+	repo repository.FeedRepository
+}
+
+func NewFeedService(r repository.FeedRepository) FeedService {
+	return &feedService{repo: r}
 }
 
 const MixRatio = 4
 
-func (s *FeedService) GetFeed(userID uint, limit int, cursor *time.Time) (*dto.FeedResponse, error) {
+func (s *feedService) GetFeed(userID uint, limit int, cursor *time.Time) (*dto.FeedResponse, error) {
+	if userID == 0 {
+		return nil, fmt.Errorf("unauthorized")
+	}
+	if limit <= 0 {
+		limit = 20
+	}
+
 	// Following posts
 	following, err := s.repo.GetFollowingPosts(userID, limit, cursor)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("get following posts: %w", err)
 	}
 
 	// Recommended
@@ -30,7 +45,10 @@ func (s *FeedService) GetFeed(userID uint, limit int, cursor *time.Time) (*dto.F
 		recCount = 1
 	}
 
-	recommended, _ := s.repo.GetRecommendedPosts(userID, recCount)
+	recommended, err := s.repo.GetRecommendedPosts(userID, recCount)
+	if err != nil {
+		recommended = []model.Post{}
+	}
 
 	// Mapping
 	followingDTO := mapper.MapPostsToDTO(following, userID)
@@ -53,7 +71,7 @@ func (s *FeedService) GetFeed(userID uint, limit int, cursor *time.Time) (*dto.F
 		recIndex++
 	}
 
-	// cursor logic
+	// cursor
 	var nextCursor *string
 	if len(following) > 0 {
 		t := following[len(following)-1].CreatedAt.UTC().Format(time.RFC3339)

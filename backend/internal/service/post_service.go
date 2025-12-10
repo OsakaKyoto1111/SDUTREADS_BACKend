@@ -1,37 +1,54 @@
 package service
 
 import (
+	"fmt"
+
 	"backend/internal/dto"
 	"backend/internal/model"
 	"backend/internal/repository"
-	"errors"
 )
 
-type PostService struct {
-	postRepo    *repository.PostRepository
-	commentSvc  *CommentService
-	commentTree *CommentTreeService
+type PostService interface {
+	CreatePost(userID uint, req dto.CreatePostRequest) error
+	UpdatePost(postID uint, userID uint, req dto.UpdatePostRequest) error
+	DeletePost(postID, userID uint) error
+	AddFiles(postID uint, urls []string) error
+	LikePost(postID, userID uint) error
+	UnlikePost(postID, userID uint) error
+	GetPost(postID, userID uint) (*dto.PostWithCommentsResponse, error)
 }
 
-func NewPostService(postRepo *repository.PostRepository, commentSvc *CommentService, commentTree *CommentTreeService) *PostService {
-	return &PostService{postRepo: postRepo, commentSvc: commentSvc, commentTree: commentTree}
+type postService struct {
+	repo        repository.PostRepository
+	commentSvc  CommentService
+	commentTree CommentTreeService
 }
 
-func (s *PostService) CreatePost(userID uint, req dto.CreatePostRequest) error {
+func NewPostService(postRepo repository.PostRepository, commentSvc CommentService, commentTree CommentTreeService) PostService {
+	return &postService{repo: postRepo, commentSvc: commentSvc, commentTree: commentTree}
+}
+
+func (s *postService) CreatePost(userID uint, req dto.CreatePostRequest) error {
+	if userID == 0 {
+		return fmt.Errorf("unauthorized")
+	}
 	post := model.Post{
 		UserID:      userID,
 		Description: req.Description,
 	}
-	return s.postRepo.CreatePost(&post)
+	return s.repo.CreatePost(&post)
 }
 
-func (s *PostService) UpdatePost(postID uint, userID uint, req dto.UpdatePostRequest) error {
-	post, err := s.postRepo.FindByID(postID)
+func (s *postService) UpdatePost(postID uint, userID uint, req dto.UpdatePostRequest) error {
+	if postID == 0 || userID == 0 {
+		return fmt.Errorf("invalid ids")
+	}
+	post, err := s.repo.FindByID(postID)
 	if err != nil {
-		return err
+		return fmt.Errorf("find post: %w", err)
 	}
 	if post.UserID != userID {
-		return errors.New("forbidden")
+		return fmt.Errorf("forbidden")
 	}
 	updates := map[string]interface{}{}
 	if req.Description != nil {
@@ -40,21 +57,27 @@ func (s *PostService) UpdatePost(postID uint, userID uint, req dto.UpdatePostReq
 	if len(updates) == 0 {
 		return nil
 	}
-	return s.postRepo.UpdateFields(postID, updates)
+	return s.repo.UpdateFields(postID, updates)
 }
 
-func (s *PostService) DeletePost(postID uint, userID uint) error {
-	post, err := s.postRepo.FindByID(postID)
+func (s *postService) DeletePost(postID uint, userID uint) error {
+	if postID == 0 || userID == 0 {
+		return fmt.Errorf("invalid ids")
+	}
+	post, err := s.repo.FindByID(postID)
 	if err != nil {
-		return err
+		return fmt.Errorf("find post: %w", err)
 	}
 	if post.UserID != userID {
-		return errors.New("forbidden")
+		return fmt.Errorf("forbidden")
 	}
-	return s.postRepo.DeletePost(postID, userID)
+	return s.repo.DeletePost(postID, userID)
 }
 
-func (s *PostService) AddFiles(postID uint, urls []string) error {
+func (s *postService) AddFiles(postID uint, urls []string) error {
+	if postID == 0 {
+		return fmt.Errorf("invalid post id")
+	}
 	var f []model.File
 	for _, url := range urls {
 		f = append(f, model.File{
@@ -62,21 +85,30 @@ func (s *PostService) AddFiles(postID uint, urls []string) error {
 			URL:    url,
 		})
 	}
-	return s.postRepo.AddFiles(f)
+	return s.repo.AddFiles(f)
 }
 
-func (s *PostService) LikePost(postID, userID uint) error {
-	return s.postRepo.LikePost(postID, userID)
+func (s *postService) LikePost(postID, userID uint) error {
+	if postID == 0 || userID == 0 {
+		return fmt.Errorf("invalid ids")
+	}
+	return s.repo.LikePost(postID, userID)
 }
 
-func (s *PostService) UnlikePost(postID, userID uint) error {
-	return s.postRepo.UnlikePost(postID, userID)
+func (s *postService) UnlikePost(postID, userID uint) error {
+	if postID == 0 || userID == 0 {
+		return fmt.Errorf("invalid ids")
+	}
+	return s.repo.UnlikePost(postID, userID)
 }
 
-func (s *PostService) GetPost(postID, userID uint) (*dto.PostWithCommentsResponse, error) {
-	post, err := s.postRepo.FindByID(postID)
+func (s *postService) GetPost(postID, userID uint) (*dto.PostWithCommentsResponse, error) {
+	if postID == 0 {
+		return nil, fmt.Errorf("invalid id")
+	}
+	post, err := s.repo.FindByID(postID)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("find post: %w", err)
 	}
 
 	isLiked := false
@@ -94,7 +126,7 @@ func (s *PostService) GetPost(postID, userID uint) (*dto.PostWithCommentsRespons
 
 	tree, err := s.commentTree.GetCommentTree(postID, userID)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("comment tree: %w", err)
 	}
 
 	return &dto.PostWithCommentsResponse{

@@ -1,93 +1,61 @@
 package handler
 
 import (
+	"net/http"
+
 	"backend/internal/dto"
 	"backend/internal/service"
-	"net/http"
-	"strconv"
 
 	"github.com/labstack/echo/v4"
 )
 
 type CommentHandler struct {
-	service *service.CommentService
+	svc service.CommentService
 }
 
-func NewCommentHandler(s *service.CommentService) *CommentHandler {
-	return &CommentHandler{s}
+func NewCommentHandler(s service.CommentService) *CommentHandler {
+	return &CommentHandler{svc: s}
 }
 
 func (h *CommentHandler) Add(c echo.Context) error {
-	userIDVal := c.Get("user_id")
-	if userIDVal == nil {
-		return c.JSON(http.StatusUnauthorized, echo.Map{"error": "unauthorized"})
-	}
-	userID := uint(0)
-	switch v := userIDVal.(type) {
-	case uint:
-		userID = v
-	case int:
-		userID = uint(v)
-	case int64:
-		userID = uint(v)
-	case float64:
-		userID = uint(v)
-	default:
-		return c.JSON(http.StatusUnauthorized, echo.Map{"error": "unauthorized"})
+	userID, ok := requireAuth(c)
+	if !ok {
+		return nil
 	}
 
-	postID64, err := strconv.ParseUint(c.Param("id"), 10, 64)
+	postID, err := parseIDParam(c, "id")
 	if err != nil {
-		return c.JSON(http.StatusBadRequest, echo.Map{"error": "invalid post id"})
-	}
-	postID := uint(postID64)
-
-	req := new(dto.AddCommentRequest)
-	if err := c.Bind(req); err != nil {
-		return c.JSON(http.StatusBadRequest, echo.Map{"error": "invalid request"})
+		httpErr := err.(*echo.HTTPError)
+		return respondError(c, httpErr.Code, httpErr.Message.(string))
 	}
 
-	if err := h.service.AddComment(postID, userID, *req); err != nil {
-		return c.JSON(http.StatusInternalServerError, echo.Map{"error": err.Error()})
+	var req dto.AddCommentRequest
+	if err := bindJSON(c, &req); err != nil {
+		return respondError(c, http.StatusBadRequest, err.Error())
 	}
 
-	return c.JSON(http.StatusCreated, echo.Map{"message": "comment added"})
+	if err := h.svc.AddComment(postID, userID, req); err != nil {
+		return respondError(c, http.StatusBadRequest, err.Error())
+	}
+
+	return respondJSON(c, http.StatusOK, echo.Map{"message": "comment added"})
 }
 
-func (h *CommentHandler) Get(c echo.Context) error {
-	postID64, err := strconv.ParseUint(c.Param("id"), 10, 64)
+func (h *CommentHandler) GetTree(c echo.Context) error {
+	userID, _ := GetUserIDFromContext(c)
+
+	postID, err := parseIDParam(c, "id")
 	if err != nil {
-		return c.JSON(http.StatusBadRequest, echo.Map{"error": "invalid post id"})
-	}
-	postID := uint(postID64)
-
-	page, _ := strconv.Atoi(c.QueryParam("page"))
-	limit, _ := strconv.Atoi(c.QueryParam("limit"))
-	if page <= 0 {
-		page = 1
-	}
-	if limit <= 0 {
-		limit = 20
+		return respondError(c, http.StatusBadRequest, "invalid id")
 	}
 
-	userIDVal := c.Get("user_id")
-	var userID uint
-	if userIDVal != nil {
-		switch v := userIDVal.(type) {
-		case uint:
-			userID = v
-		case int:
-			userID = uint(v)
-		case int64:
-			userID = uint(v)
-		case float64:
-			userID = uint(v)
-		}
-	}
+	page := 1
+	limit := 10
 
-	resp, err := h.service.GetCommentsTree(postID, userID, page, limit)
+	tree, err := h.svc.GetCommentsTree(postID, userID, page, limit)
 	if err != nil {
-		return c.JSON(http.StatusInternalServerError, echo.Map{"error": err.Error()})
+		return respondError(c, http.StatusInternalServerError, err.Error())
 	}
-	return c.JSON(http.StatusOK, resp)
+
+	return respondJSON(c, http.StatusOK, tree)
 }

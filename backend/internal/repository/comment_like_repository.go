@@ -1,9 +1,12 @@
 package repository
 
 import (
+	"fmt"
+
 	"backend/internal/model"
 
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 type CommentLikeRepository interface {
@@ -25,36 +28,56 @@ func NewCommentLikeRepository(db *gorm.DB) CommentLikeRepository {
 }
 
 func (r *commentLikeRepository) LikeComment(commentID uint, userID uint) error {
+	if commentID == 0 || userID == 0 {
+		return fmt.Errorf("invalid ids")
+	}
+
 	like := model.CommentLike{
 		CommentID: commentID,
 		UserID:    userID,
 	}
 
-	return r.db.
-		Where("comment_id = ? AND user_id = ?", commentID, userID).
-		FirstOrCreate(&like).Error
+	if err := r.db.Clauses(clause.OnConflict{DoNothing: true}).Create(&like).Error; err != nil {
+		return fmt.Errorf("create comment_like: %w", err)
+	}
+	return nil
 }
 
 func (r *commentLikeRepository) UnlikeComment(commentID uint, userID uint) error {
-	return r.db.
-		Where("comment_id = ? AND user_id = ?", commentID, userID).
-		Delete(&model.CommentLike{}).Error
+	if commentID == 0 || userID == 0 {
+		return fmt.Errorf("invalid ids")
+	}
+	if err := r.db.Where("comment_id = ? AND user_id = ?", commentID, userID).
+		Delete(&model.CommentLike{}).Error; err != nil {
+		return fmt.Errorf("delete comment_like: %w", err)
+	}
+	return nil
 }
 
 func (r *commentLikeRepository) IsLiked(commentID uint, userID uint) (bool, error) {
-	var count int64
-	err := r.db.Model(&model.CommentLike{}).
+	if commentID == 0 || userID == 0 {
+		return false, nil
+	}
+	var cnt int64
+	if err := r.db.Model(&model.CommentLike{}).
 		Where("comment_id = ? AND user_id = ?", commentID, userID).
-		Count(&count).Error
-	return count > 0, err
+		Count(&cnt).Error; err != nil {
+		return false, fmt.Errorf("count is_liked: %w", err)
+	}
+	return cnt > 0, nil
 }
 
 func (r *commentLikeRepository) LikesCount(commentID uint) (int, error) {
-	var count int64
-	err := r.db.Model(&model.CommentLike{}).
+	if commentID == 0 {
+		return 0, nil
+	}
+	var cnt int64
+	if err := r.db.Model(&model.CommentLike{}).
 		Where("comment_id = ?", commentID).
-		Count(&count).Error
-	return int(count), err
+		Count(&cnt).Error; err != nil {
+		return 0, fmt.Errorf("count likes: %w", err)
+	}
+	return int(cnt), nil
 }
 
 func (r *commentLikeRepository) LikesCountsForComments(commentIDs []uint) (map[uint]int, error) {
@@ -69,13 +92,12 @@ func (r *commentLikeRepository) LikesCountsForComments(commentIDs []uint) (map[u
 	}
 
 	var rows []row
-	err := r.db.Model(&model.CommentLike{}).
+	if err := r.db.Model(&model.CommentLike{}).
 		Select("comment_id, count(*) as count").
 		Where("comment_id IN ?", commentIDs).
 		Group("comment_id").
-		Scan(&rows).Error
-	if err != nil {
-		return nil, err
+		Scan(&rows).Error; err != nil {
+		return nil, fmt.Errorf("likes counts for comments: %w", err)
 	}
 
 	for _, r := range rows {
@@ -92,9 +114,10 @@ func (r *commentLikeRepository) LikedByUser(commentIDs []uint, userID uint) (map
 
 	var likes []model.CommentLike
 	if err := r.db.
+		Select("comment_id").
 		Where("user_id = ? AND comment_id IN ?", userID, commentIDs).
 		Find(&likes).Error; err != nil {
-		return nil, err
+		return nil, fmt.Errorf("liked by user query: %w", err)
 	}
 
 	for _, l := range likes {

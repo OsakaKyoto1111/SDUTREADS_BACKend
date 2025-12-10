@@ -7,20 +7,26 @@ import (
 	"gorm.io/gorm"
 )
 
-type FeedRepository struct {
+type FeedRepository interface {
+	GetFollowingPosts(userID uint, limit int, cursor *time.Time) ([]model.Post, error)
+	GetRecommendedPosts(userID uint, limit int) ([]model.Post, error)
+}
+
+type feedRepository struct {
 	db *gorm.DB
 }
 
-func NewFeedRepository(db *gorm.DB) *FeedRepository {
-	return &FeedRepository{db: db}
+func NewFeedRepository(db *gorm.DB) FeedRepository {
+	return &feedRepository{db: db}
 }
 
-func (r *FeedRepository) GetFollowingPosts(userID uint, limit int, cursor *time.Time) ([]model.Post, error) {
+// Get posts from users that 'userID' follows.
+func (r *feedRepository) GetFollowingPosts(userID uint, limit int, cursor *time.Time) ([]model.Post, error) {
 	var posts []model.Post
 
 	q := r.db.
-		Joins("JOIN follows ON follows.following_id = posts.user_id").
-		Where("follows.follower_id = ?", userID).
+		Joins("JOIN followers ON followers.user_id = posts.user_id").
+		Where("followers.follower_id = ?", userID).
 		Preload("User").
 		Preload("Files").
 		Preload("Likes").
@@ -32,21 +38,25 @@ func (r *FeedRepository) GetFollowingPosts(userID uint, limit int, cursor *time.
 		q = q.Where("posts.created_at < ?", *cursor)
 	}
 
-	err := q.Find(&posts).Error
-	return posts, err
+	if err := q.Find(&posts).Error; err != nil {
+		return nil, err
+	}
+	return posts, nil
 }
 
-func (r *FeedRepository) GetRecommendedPosts(userID uint, limit int) ([]model.Post, error) {
+func (r *feedRepository) GetRecommendedPosts(userID uint, limit int) ([]model.Post, error) {
 	var posts []model.Post
 
-	err := r.db.
+	if err := r.db.
 		Raw(`
             SELECT * FROM posts
             WHERE user_id != ?
             ORDER BY RANDOM()
             LIMIT ?
         `, userID, limit).
-		Scan(&posts).Error
+		Scan(&posts).Error; err != nil {
+		return nil, err
+	}
 
-	return posts, err
+	return posts, nil
 }

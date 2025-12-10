@@ -1,184 +1,155 @@
 package handler
 
 import (
+	"net/http"
+
 	"backend/internal/dto"
 	"backend/internal/service"
-	"net/http"
-	"strconv"
 
 	"github.com/labstack/echo/v4"
 )
 
 type PostHandler struct {
-	postService *service.PostService
-	fileService *service.FileService
+	postSvc service.PostService
+	fileSvc *service.FileService
 }
 
-func NewPostHandler(p *service.PostService, f *service.FileService) *PostHandler {
-	return &PostHandler{postService: p, fileService: f}
-}
-
-func getUserIDFromContext(c echo.Context) (uint, bool) {
-	val := c.Get("user_id")
-	if val == nil {
-		return 0, false
-	}
-	switch v := val.(type) {
-	case uint:
-		return v, true
-	case int:
-		return uint(v), true
-	case int64:
-		return uint(v), true
-	case float64:
-		return uint(v), true
-	default:
-		return 0, false
-	}
-}
-
-func parseIDParam(p string) (uint, error) {
-	id, err := strconv.ParseUint(p, 10, 64)
-	return uint(id), err
+func NewPostHandler(p service.PostService, f *service.FileService) *PostHandler {
+	return &PostHandler{postSvc: p, fileSvc: f}
 }
 
 func (h *PostHandler) Create(c echo.Context) error {
-	userID, ok := getUserIDFromContext(c)
+	userID, ok := requireAuth(c)
 	if !ok {
-		return c.JSON(http.StatusUnauthorized, echo.Map{"error": "unauthorized"})
+		return nil
 	}
 
-	req := new(dto.CreatePostRequest)
-	if err := c.Bind(req); err != nil {
-		return c.JSON(http.StatusBadRequest, echo.Map{"error": "invalid request"})
+	var req dto.CreatePostRequest
+	if err := bindJSON(c, &req); err != nil {
+		return respondError(c, http.StatusBadRequest, err.Error())
 	}
 
-	if err := h.postService.CreatePost(userID, *req); err != nil {
-		return c.JSON(http.StatusInternalServerError, echo.Map{"error": err.Error()})
+	if err := h.postSvc.CreatePost(userID, req); err != nil {
+		return respondError(c, http.StatusBadRequest, err.Error())
 	}
 
-	return c.JSON(http.StatusCreated, echo.Map{"message": "post created"})
+	return respondJSON(c, http.StatusCreated, echo.Map{"message": "post created"})
+}
+
+func (h *PostHandler) Get(c echo.Context) error {
+	postID, err := parseIDParam(c, "id")
+	if err != nil {
+		httpErr := err.(*echo.HTTPError)
+		return respondError(c, httpErr.Code, httpErr.Message.(string))
+	}
+
+	userID, _ := GetUserIDFromContext(c)
+
+	post, err := h.postSvc.GetPost(postID, userID)
+	if err != nil {
+		return respondError(c, http.StatusNotFound, err.Error())
+	}
+
+	return respondJSON(c, http.StatusOK, post)
 }
 
 func (h *PostHandler) Update(c echo.Context) error {
-	userID, ok := getUserIDFromContext(c)
+	userID, ok := requireAuth(c)
 	if !ok {
-		return c.JSON(http.StatusUnauthorized, echo.Map{"error": "unauthorized"})
+		return nil
 	}
-	postID, err := parseIDParam(c.Param("id"))
+
+	postID, err := parseIDParam(c, "id")
 	if err != nil {
-		return c.JSON(http.StatusBadRequest, echo.Map{"error": "invalid post id"})
+		return respondError(c, http.StatusBadRequest, "invalid post id")
 	}
 
-	req := new(dto.UpdatePostRequest)
-	if err := c.Bind(req); err != nil {
-		return c.JSON(http.StatusBadRequest, echo.Map{"error": "invalid request"})
+	var req dto.UpdatePostRequest
+	if err := bindJSON(c, &req); err != nil {
+		return respondError(c, http.StatusBadRequest, err.Error())
 	}
 
-	if err := h.postService.UpdatePost(postID, userID, *req); err != nil {
-		if err.Error() == "forbidden" {
-			return c.JSON(http.StatusForbidden, echo.Map{"error": "forbidden"})
-		}
-		return c.JSON(http.StatusInternalServerError, echo.Map{"error": err.Error()})
+	if err := h.postSvc.UpdatePost(postID, userID, req); err != nil {
+		return respondError(c, http.StatusBadRequest, err.Error())
 	}
 
-	return c.JSON(http.StatusOK, echo.Map{"message": "post updated"})
+	return respondJSON(c, http.StatusOK, echo.Map{"message": "updated"})
 }
 
 func (h *PostHandler) Delete(c echo.Context) error {
-	userID, ok := getUserIDFromContext(c)
+	userID, ok := requireAuth(c)
 	if !ok {
-		return c.JSON(http.StatusUnauthorized, echo.Map{"error": "unauthorized"})
+		return nil
 	}
-	postID, err := parseIDParam(c.Param("id"))
+
+	postID, err := parseIDParam(c, "id")
 	if err != nil {
-		return c.JSON(http.StatusBadRequest, echo.Map{"error": "invalid post id"})
+		return respondError(c, http.StatusBadRequest, "invalid post id")
 	}
 
-	if err := h.postService.DeletePost(postID, userID); err != nil {
-		if err.Error() == "forbidden" {
-			return c.JSON(http.StatusForbidden, echo.Map{"error": "forbidden"})
-		}
-		return c.JSON(http.StatusInternalServerError, echo.Map{"error": err.Error()})
+	if err := h.postSvc.DeletePost(postID, userID); err != nil {
+		return respondError(c, http.StatusBadRequest, err.Error())
 	}
 
-	return c.JSON(http.StatusOK, echo.Map{"message": "post deleted"})
+	return respondJSON(c, http.StatusOK, echo.Map{"message": "deleted"})
+}
+
+func (h *PostHandler) Like(c echo.Context) error {
+	userID, ok := requireAuth(c)
+	if !ok {
+		return nil
+	}
+
+	postID, err := parseIDParam(c, "id")
+	if err != nil {
+		return respondError(c, http.StatusBadRequest, "invalid post id")
+	}
+
+	if err := h.postSvc.LikePost(postID, userID); err != nil {
+		return respondError(c, http.StatusBadRequest, err.Error())
+	}
+
+	return respondJSON(c, http.StatusOK, echo.Map{"message": "liked"})
+}
+
+func (h *PostHandler) Unlike(c echo.Context) error {
+	userID, ok := requireAuth(c)
+	if !ok {
+		return nil
+	}
+
+	postID, err := parseIDParam(c, "id")
+	if err != nil {
+		return respondError(c, http.StatusBadRequest, "invalid post id")
+	}
+
+	if err := h.postSvc.UnlikePost(postID, userID); err != nil {
+		return respondError(c, http.StatusBadRequest, err.Error())
+	}
+
+	return respondJSON(c, http.StatusOK, echo.Map{"message": "unliked"})
 }
 
 func (h *PostHandler) AddFiles(c echo.Context) error {
-	postID, err := parseIDParam(c.Param("id"))
+	postID, err := parseIDParam(c, "id")
 	if err != nil {
-		return c.JSON(http.StatusBadRequest, echo.Map{"error": "invalid post id"})
+		return respondError(c, http.StatusBadRequest, "invalid post id")
 	}
 
 	form, err := c.MultipartForm()
 	if err != nil {
-		return c.JSON(http.StatusBadRequest, echo.Map{"error": "invalid form"})
+		return respondError(c, http.StatusBadRequest, "invalid form data")
 	}
 
 	files := form.File["files"]
-	if len(files) == 0 {
-		return c.JSON(http.StatusBadRequest, echo.Map{"error": "no files provided"})
-	}
-
-	urls, err := h.fileService.SaveFiles(postID, files)
+	urls, err := h.fileSvc.SaveFiles(postID, files)
 	if err != nil {
-		return c.JSON(http.StatusBadRequest, echo.Map{"error": err.Error()})
+		return respondError(c, http.StatusInternalServerError, err.Error())
 	}
 
-	if err := h.postService.AddFiles(postID, urls); err != nil {
-		return c.JSON(http.StatusInternalServerError, echo.Map{"error": err.Error()})
+	if err := h.postSvc.AddFiles(postID, urls); err != nil {
+		return respondError(c, http.StatusInternalServerError, err.Error())
 	}
 
-	return c.JSON(http.StatusOK, echo.Map{"urls": urls})
-}
-
-func (h *PostHandler) LikePost(c echo.Context) error {
-	userID, ok := getUserIDFromContext(c)
-	if !ok {
-		return c.JSON(http.StatusUnauthorized, echo.Map{"error": "unauthorized"})
-	}
-	postID, err := parseIDParam(c.Param("id"))
-	if err != nil {
-		return c.JSON(http.StatusBadRequest, echo.Map{"error": "invalid post id"})
-	}
-
-	if err := h.postService.LikePost(postID, userID); err != nil {
-		return c.JSON(http.StatusInternalServerError, echo.Map{"error": err.Error()})
-	}
-	return c.JSON(http.StatusOK, echo.Map{"message": "liked"})
-}
-
-func (h *PostHandler) UnlikePost(c echo.Context) error {
-	userID, ok := getUserIDFromContext(c)
-	if !ok {
-		return c.JSON(http.StatusUnauthorized, echo.Map{"error": "unauthorized"})
-	}
-	postID, err := parseIDParam(c.Param("id"))
-	if err != nil {
-		return c.JSON(http.StatusBadRequest, echo.Map{"error": "invalid post id"})
-	}
-
-	if err := h.postService.UnlikePost(postID, userID); err != nil {
-		return c.JSON(http.StatusInternalServerError, echo.Map{"error": err.Error()})
-	}
-	return c.JSON(http.StatusOK, echo.Map{"message": "unliked"})
-}
-func (h *PostHandler) GetPost(c echo.Context) error {
-	userID, ok := getUserIDFromContext(c)
-	if !ok {
-		return c.JSON(http.StatusUnauthorized, echo.Map{"error": "unauthorized"})
-	}
-
-	postID, err := parseIDParam(c.Param("id"))
-	if err != nil {
-		return c.JSON(http.StatusBadRequest, echo.Map{"error": "invalid id"})
-	}
-
-	resp, err := h.postService.GetPost(postID, userID)
-	if err != nil {
-		return c.JSON(http.StatusInternalServerError, echo.Map{"error": err.Error()})
-	}
-
-	return c.JSON(http.StatusOK, resp)
+	return respondJSON(c, http.StatusOK, urls)
 }

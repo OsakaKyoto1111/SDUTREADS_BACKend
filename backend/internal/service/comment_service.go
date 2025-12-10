@@ -1,45 +1,63 @@
 package service
 
 import (
+	"fmt"
+	"sort"
+
 	"backend/internal/dto"
 	"backend/internal/model"
 	"backend/internal/repository"
-	"sort"
 )
 
-type CommentService struct {
-	commentRepo *repository.CommentRepository
-	likeRepo    repository.CommentLikeRepository
+// CommentService defines comment operations
+type CommentService interface {
+	AddComment(postID, userID uint, req dto.AddCommentRequest) error
+	GetCommentsTree(postID uint, userID uint, page, limit int) (*dto.CommentListResponse, error)
 }
 
-func NewCommentService(repo *repository.CommentRepository, likeRepo repository.CommentLikeRepository) *CommentService {
-	return &CommentService{commentRepo: repo, likeRepo: likeRepo}
+type commentService struct {
+	repo repository.CommentRepository
+	like repository.CommentLikeRepository
 }
 
-func (s *CommentService) AddComment(postID, userID uint, req dto.AddCommentRequest) error {
+func NewCommentService(r repository.CommentRepository, l repository.CommentLikeRepository) CommentService {
+	return &commentService{repo: r, like: l}
+}
+
+func (s *commentService) AddComment(postID, userID uint, req dto.AddCommentRequest) error {
+	if postID == 0 || userID == 0 {
+		return fmt.Errorf("invalid ids")
+	}
+	if req.Text == "" {
+		return fmt.Errorf("text is required")
+	}
+
 	comment := model.Comment{
 		PostID:   postID,
 		UserID:   userID,
 		ParentID: req.ParentID,
 		Text:     req.Text,
 	}
-	return s.commentRepo.Add(&comment)
+	return s.repo.Add(&comment)
 }
 
 // GetCommentsTree - returns paginated root comments and their entire reply trees.
 // page is 1-based. limit applies to root comments.
-func (s *CommentService) GetCommentsTree(postID uint, userID uint, page, limit int) (*dto.CommentListResponse, error) {
+func (s *commentService) GetCommentsTree(postID uint, userID uint, page, limit int) (*dto.CommentListResponse, error) {
 	if page < 1 {
 		page = 1
 	}
 	if limit <= 0 {
 		limit = 20
 	}
+	if postID == 0 {
+		return nil, fmt.Errorf("invalid post id")
+	}
 
 	// 1) load all comments for the post
-	allComments, err := s.commentRepo.GetCommentsByPostID(postID)
+	allComments, err := s.repo.GetCommentsByPostID(postID)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("load comments: %w", err)
 	}
 
 	// early exit
@@ -57,13 +75,13 @@ func (s *CommentService) GetCommentsTree(postID uint, userID uint, page, limit i
 	for _, c := range allComments {
 		allIDs = append(allIDs, c.ID)
 	}
-	likesMap, err := s.likeRepo.LikesCountsForComments(allIDs)
+	likesMap, err := s.like.LikesCountsForComments(allIDs)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("likes counts: %w", err)
 	}
-	likedMap, err := s.likeRepo.LikedByUser(allIDs, userID)
+	likedMap, err := s.like.LikedByUser(allIDs, userID)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("liked by user: %w", err)
 	}
 
 	// node storage
@@ -113,11 +131,16 @@ func (s *CommentService) GetCommentsTree(postID uint, userID uint, page, limit i
 		return nodes[roots[i]].raw.CreatedAt.After(nodes[roots[j]].raw.CreatedAt)
 	})
 
-	// build tree
+	// build tree with cycle protection
 	for _, n := range nodes {
 		if n.dto.ParentID != nil {
 			parent, ok := nodes[*n.dto.ParentID]
 			if ok {
+				// detect simple cycle (parent points to child)
+				if parent.dto.ParentID != nil && *parent.dto.ParentID == n.dto.ID {
+					// break cycle by ignoring parent relationship (safe fallback)
+					continue
+				}
 				parent.dto.Replies = append(parent.dto.Replies, n.dto)
 			}
 		}
