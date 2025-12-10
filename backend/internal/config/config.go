@@ -15,7 +15,7 @@ func Load() (*Config, error) {
 	return &Config{
 		AppPort:     getEnv("APP_PORT", "8080"),
 		DatabaseDSN: getEnv("DATABASE_DSN", "postgres://postgres:postgres@db:5432/backend?sslmode=disable"),
-		JWTSecret:   getEnv("JWT_SECRET", "supersecret"),
+		JWTSecret:   getEnv("JWT_SECRET", "supersecretkey"),
 		RedisAddr:   getEnv("REDIS_ADDR", "redis:6379"),
 	}, nil
 }

@@ -10,13 +10,12 @@ func MapRegisterRequestToUser(req dto.RegisterRequest, passwordHash string) *mod
 		Email:        req.Email,
 		Nickname:     req.Nickname,
 		PasswordHash: passwordHash,
-
-		FirstName:   req.FirstName,
-		LastName:    req.LastName,
-		Grade:       req.Grade,
-		Major:       req.Major,
-		City:        req.City,
-		Description: req.Description,
+		FirstName:    req.FirstName,
+		LastName:     req.LastName,
+		Grade:        req.Grade,
+		Major:        req.Major,
+		City:         req.City,
+		Description:  req.Description,
 	}
 }
 
