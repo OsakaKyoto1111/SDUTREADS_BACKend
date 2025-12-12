@@ -54,7 +54,7 @@ func main() {
 	commentLikeHandler := handler.NewCommentLikeHandler(commentLikeSvc)
 	feedHandler := handler.NewFeedHandler(feedSvc)
 	fileHandler := handler.NewFileHandler(fileSvc)
-	authCheckHandler := handler.NewAuthCheckHandler()
+	authCheckHandler := handler.NewAuthCheckHandler(userRepo)
 
 	e := echo.New()
 	e.Use(echoMiddleware.Logger())

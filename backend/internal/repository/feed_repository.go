@@ -46,14 +46,31 @@ func (r *feedRepository) GetFollowingPosts(userID uint, limit int, cursor *time.
 func (r *feedRepository) GetRecommendedPosts(userID uint, limit int) ([]model.Post, error) {
 	var posts []model.Post
 
+	// Сначала выберем ID постов raw-запросом
+	var ids []uint
 	if err := r.db.
 		Raw(`
-            SELECT * FROM posts
+            SELECT id FROM posts
             WHERE user_id != ?
             ORDER BY RANDOM()
             LIMIT ?
         `, userID, limit).
-		Scan(&posts).Error; err != nil {
+		Scan(&ids).Error; err != nil {
+		return nil, err
+	}
+
+	if len(ids) == 0 {
+		return []model.Post{}, nil
+	}
+
+	// Теперь загрузим сами посты с Preload
+	if err := r.db.
+		Where("id IN ?", ids).
+		Preload("User").
+		Preload("Files").
+		Preload("Likes").
+		Preload("Comments").
+		Find(&posts).Error; err != nil {
 		return nil, err
 	}
 
