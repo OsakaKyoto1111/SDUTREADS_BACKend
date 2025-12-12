@@ -55,6 +55,7 @@ func main() {
 	commentLikeHandler := handler.NewCommentLikeHandler(commentLikeSvc)
 	feedHandler := handler.NewFeedHandler(feedSvc)
 	fileHandler := handler.NewFileHandler(fileSvc)
+	authCheckHandler := handler.NewAuthCheckHandler()
 
 	e := echo.New()
 	e.Use(echoMiddleware.Logger())
@@ -66,25 +67,14 @@ func main() {
 	feedGroup := api.Group("/feed")
 	feedGroup.Use(middleware.JWT(cfg.JWTSecret))
 	feedGroup.GET("", feedHandler.Get)
-	api.GET("/debug/headers", func(c echo.Context) error {
-		return c.JSON(200, c.Request().Header)
-	})
-	api.GET("/debug/token", func(c echo.Context) error {
-		authHeader := c.Request().Header.Get("Authorization")
-		previewLen := 10
-		if len(cfg.JWTSecret) < previewLen {
-			previewLen = len(cfg.JWTSecret)
-		}
-		return c.JSON(200, map[string]interface{}{
-			"authorization_header": authHeader,
-			"jwt_secret_length":    len(cfg.JWTSecret),
-			"jwt_secret_preview":   cfg.JWTSecret[:previewLen] + "...",
-		})
-	})
 
 	authGroup := api.Group("/auth")
 	authGroup.POST("/register", authHandler.Register)
 	authGroup.POST("/login", authHandler.Login)
+
+	authProtected := authGroup.Group("")
+	authProtected.Use(middleware.JWT(cfg.JWTSecret))
+	authProtected.GET("/check", authCheckHandler.CheckToken)
 
 	userGroup := api.Group("/user")
 	userGroup.Use(middleware.JWT(cfg.JWTSecret))
