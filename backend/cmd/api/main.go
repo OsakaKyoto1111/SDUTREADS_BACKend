@@ -37,15 +37,14 @@ func main() {
 	commentRepo := repository.NewCommentRepository(db)
 	commentLikeRepo := repository.NewCommentLikeRepository(db)
 	feedRepo := repository.NewFeedRepository(db)
-
 	authSvc := service.NewAuthService(userRepo, cfg.JWTSecret)
 	userSvc := service.NewUserService(userRepo)
 	commentLikeSvc := service.NewCommentLikeService(commentLikeRepo)
 	commentSvc := service.NewCommentService(commentRepo, commentLikeRepo)
 	commentTreeSvc := service.NewCommentTreeService(commentRepo, commentLikeRepo)
-	postSvc := service.NewPostService(postRepo, commentSvc, commentTreeSvc)
 
 	fileSvc := service.NewFileService("uploads", "/uploads/", 10*1024*1024, []string{"jpg", "jpeg", "png", "gif", "mp4"})
+	postSvc := service.NewPostService(postRepo, commentSvc, commentTreeSvc, fileSvc)
 
 	feedSvc := service.NewFeedService(feedRepo)
 	authHandler := handler.NewAuthHandler(authSvc)

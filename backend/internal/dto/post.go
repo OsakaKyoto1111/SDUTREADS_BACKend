@@ -21,3 +21,7 @@ type FileResponse struct {
 	ID  uint   `json:"id"`
 	URL string `json:"url"`
 }
+
+type CreatePostRequestMultipart struct {
+	Description *string `form:"description"`
+}

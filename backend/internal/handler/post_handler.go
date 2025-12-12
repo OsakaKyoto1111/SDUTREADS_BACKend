@@ -24,16 +24,24 @@ func (h *PostHandler) Create(c echo.Context) error {
 		return nil
 	}
 
-	var req dto.CreatePostRequest
-	if err := bindJSON(c, &req); err != nil {
+	var req dto.CreatePostRequestMultipart
+	if err := c.Bind(&req); err != nil {
+		return respondError(c, http.StatusBadRequest, "invalid form data")
+	}
+
+	form, err := c.MultipartForm()
+	if err != nil {
+		return respondError(c, http.StatusBadRequest, "failed to parse multipart form")
+	}
+
+	files := form.File["files"]
+
+	postID, err := h.postSvc.CreatePostWithFiles(userID, req, files)
+	if err != nil {
 		return respondError(c, http.StatusBadRequest, err.Error())
 	}
 
-	if err := h.postSvc.CreatePost(userID, req); err != nil {
-		return respondError(c, http.StatusBadRequest, err.Error())
-	}
-
-	return respondJSON(c, http.StatusCreated, echo.Map{"message": "post created"})
+	return respondJSON(c, http.StatusCreated, echo.Map{"id": postID})
 }
 
 func (h *PostHandler) Get(c echo.Context) error {

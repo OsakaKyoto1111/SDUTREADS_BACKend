@@ -2,6 +2,7 @@ package service
 
 import (
 	"fmt"
+	"mime/multipart"
 
 	"backend/internal/dto"
 	"backend/internal/model"
@@ -16,16 +17,69 @@ type PostService interface {
 	LikePost(postID, userID uint) error
 	UnlikePost(postID, userID uint) error
 	GetPost(postID, userID uint) (*dto.PostWithCommentsResponse, error)
+	CreatePostWithFiles(userID uint, req dto.CreatePostRequestMultipart, files []*multipart.FileHeader) (uint, error)
 }
 
 type postService struct {
 	repo        repository.PostRepository
 	commentSvc  CommentService
 	commentTree CommentTreeService
+	fileSvc     *FileService
 }
 
-func NewPostService(postRepo repository.PostRepository, commentSvc CommentService, commentTree CommentTreeService) PostService {
-	return &postService{repo: postRepo, commentSvc: commentSvc, commentTree: commentTree}
+func (s *postService) CreatePostWithFiles(userID uint, req dto.CreatePostRequestMultipart, files []*multipart.FileHeader) (uint, error) {
+	if userID == 0 {
+		return 0, fmt.Errorf("unauthorized")
+	}
+
+	post := model.Post{
+		UserID:      userID,
+		Description: req.Description,
+	}
+
+	// создаём сам пост
+	if err := s.repo.CreatePost(&post); err != nil {
+		return 0, err
+	}
+
+	// если файлов нет — return
+	if len(files) == 0 {
+		return post.ID, nil
+	}
+
+	urls, err := s.fileSvc.SaveFiles(post.ID, files)
+	if err != nil {
+		return 0, err
+	}
+
+	// сохраняем в БД
+	var dbFiles []model.File
+	for _, u := range urls {
+		dbFiles = append(dbFiles, model.File{
+			PostID: post.ID,
+			URL:    u,
+		})
+	}
+
+	if err := s.repo.AddFiles(dbFiles); err != nil {
+		return 0, err
+	}
+
+	return post.ID, nil
+}
+
+func NewPostService(
+	postRepo repository.PostRepository,
+	commentSvc CommentService,
+	commentTree CommentTreeService,
+	fileSvc *FileService,
+) PostService {
+	return &postService{
+		repo:        postRepo,
+		commentSvc:  commentSvc,
+		commentTree: commentTree,
+		fileSvc:     fileSvc,
+	}
 }
 
 func (s *postService) CreatePost(userID uint, req dto.CreatePostRequest) error {
