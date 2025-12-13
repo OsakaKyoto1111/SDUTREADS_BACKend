@@ -20,6 +20,7 @@ type UserRepository interface {
 	GetByNickname(nickname string) (*model.User, error)
 	Update(user *model.User) error
 	Delete(id uint) error
+	IsFollowing(userID uint, targetID uint) (bool, error)
 
 	GetPostsCount(userID uint) (int64, error)
 	GetFollowersCount(userID uint) (int64, error)
@@ -48,6 +49,20 @@ func (r *userRepository) Create(user *model.User) error {
 		return fmt.Errorf("create user: %w", err)
 	}
 	return nil
+}
+func (r *userRepository) IsFollowing(userID uint, targetID uint) (bool, error) {
+	var count int64
+	err := r.db.
+		Model(&model.Follower{}).
+		Where("user_id = ? AND follower_id = ?", targetID, userID).
+		Count(&count).
+		Error
+
+	if err != nil {
+		return false, fmt.Errorf("check following: %w", err)
+	}
+
+	return count > 0, nil
 }
 
 func (r *userRepository) GetByID(id uint) (*model.User, error) {

@@ -20,6 +20,7 @@ type UserService interface {
 	Unfollow(userID uint, targetID uint) error
 	GetFollowers(userID uint) ([]dto.UserShortDTO, error)
 	GetFollowing(userID uint) ([]dto.UserShortDTO, error)
+	IsFollowing(userID uint, targetID uint) (bool, error)
 }
 
 type userService struct {
@@ -28,6 +29,16 @@ type userService struct {
 
 func NewUserService(repo repository.UserRepository) UserService {
 	return &userService{repo: repo}
+}
+func (s *userService) IsFollowing(userID uint, targetID uint) (bool, error) {
+	if userID == 0 || targetID == 0 {
+		return false, fmt.Errorf("invalid ids")
+	}
+	if userID == targetID {
+		return false, nil
+	}
+
+	return s.repo.IsFollowing(userID, targetID)
 }
 
 func (s *userService) SearchUsersWithCounts(query string) ([]dto.UserResponse, error) {

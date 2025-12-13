@@ -19,6 +19,27 @@ func NewUserHandler(s service.UserService) *UserHandler {
 	return &UserHandler{svc: s}
 }
 
+func (h *UserHandler) IsFollowing(c echo.Context) error {
+	userID, ok := requireAuth(c)
+	if !ok {
+		return nil
+	}
+
+	targetID, err := parseIDParam(c, "id")
+	if err != nil {
+		httpErr := err.(*echo.HTTPError)
+		return respondError(c, httpErr.Code, httpErr.Message.(string))
+	}
+
+	isFollowing, err := h.svc.IsFollowing(userID, targetID)
+	if err != nil {
+		return respondError(c, http.StatusInternalServerError, err.Error())
+	}
+
+	return respondJSON(c, http.StatusOK, echo.Map{
+		"is_following": isFollowing,
+	})
+}
 func (h *UserHandler) GetProfileByID(c echo.Context) error {
 	id, err := parseIDParam(c, "id")
 	if err != nil {
