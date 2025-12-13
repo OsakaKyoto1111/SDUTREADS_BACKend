@@ -2,6 +2,7 @@ package repository
 
 import (
 	"fmt"
+	"strings"
 
 	"backend/internal/model"
 
@@ -134,10 +135,51 @@ func (r *userRepository) GetFollowingCount(userID uint) (int64, error) {
 
 func (r *userRepository) Search(query string) ([]model.User, error) {
 	var users []model.User
-	if err := r.db.Where("nickname ILIKE ? OR email ILIKE ?", "%"+query+"%", "%"+query+"%").Find(&users).Error; err != nil {
+	query = strings.TrimSpace(query)
+	if query == "" {
+		return users, nil
+	}
+
+	words := strings.Fields(query) // Разбиваем на слова
+	dbQuery := r.db.Model(&model.User{})
+
+	// Основной WHERE
+	for _, word := range words {
+		wordPattern := "%" + word + "%"
+		dbQuery = dbQuery.Where(
+			"nickname ILIKE ? OR COALESCE(first_name, '') ILIKE ? OR COALESCE(last_name, '') ILIKE ? OR "+
+				"COALESCE(first_name, '') || ' ' || COALESCE(last_name, '') ILIKE ? OR "+
+				"COALESCE(last_name, '') || ' ' || COALESCE(first_name, '') ILIKE ?",
+			wordPattern, wordPattern, wordPattern, wordPattern, wordPattern,
+		)
+	}
+
+	// Релевантность через встроенную строку
+	fullName := strings.Join(words, " ")
+	fullNameReversed := strings.Join(reverseSlice(words), " ")
+	relevanceOrder := fmt.Sprintf(`
+		CASE
+			WHEN nickname ILIKE '%s' THEN 1
+			WHEN COALESCE(first_name, '') || ' ' || COALESCE(last_name, '') ILIKE '%s' THEN 2
+			ELSE 3
+		END
+	`, fullName, fullNameReversed)
+
+	dbQuery = dbQuery.Order(relevanceOrder)
+
+	if err := dbQuery.Find(&users).Error; err != nil {
 		return nil, fmt.Errorf("search users: %w", err)
 	}
+
 	return users, nil
+}
+
+func reverseSlice(s []string) []string {
+	reversed := make([]string, len(s))
+	for i, word := range s {
+		reversed[len(s)-1-i] = word
+	}
+	return reversed
 }
 
 func (r *userRepository) Follow(userID, targetID uint) error {
