@@ -104,7 +104,6 @@ func main() {
 	postGroup.POST("/:id/comments", commentHandler.Add)
 	postGroup.POST("/comments/:comment_id/like", commentLikeHandler.Like)
 	postGroup.DELETE("/comments/:comment_id/like", commentLikeHandler.Unlike)
-
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 

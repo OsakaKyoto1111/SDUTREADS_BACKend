@@ -162,21 +162,25 @@ func (h *PostHandler) AddFiles(c echo.Context) error {
 	return respondJSON(c, http.StatusOK, urls)
 }
 
-func (h *PostHandler) MyPosts(c echo.Context) error {
-	userID, ok := requireAuth(c)
+func (h *PostHandler) UserPosts(c echo.Context) error {
+	viewerID, ok := requireAuth(c)
 	if !ok {
 		return nil
 	}
 
-	posts, err := h.postSvc.GetUserPosts(userID, userID)
+	targetID, err := parseIDParam(c, "id")
+	if err != nil {
+		return respondError(c, http.StatusBadRequest, "invalid user id")
+	}
+
+	posts, err := h.postSvc.GetUserPosts(targetID, viewerID)
 	if err != nil {
 		return respondError(c, http.StatusInternalServerError, err.Error())
 	}
 
 	return respondJSON(c, http.StatusOK, posts)
 }
-
-func (h *PostHandler) UserPosts(c echo.Context) error {
+func (h *PostHandler) MyPosts(c echo.Context) error {
 	viewerID, ok := requireAuth(c)
 	if !ok {
 		return nil
