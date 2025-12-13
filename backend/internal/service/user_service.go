@@ -18,6 +18,8 @@ type UserService interface {
 	SetAvatar(id uint, avatarURL string) (*model.User, error)
 	Follow(userID uint, targetID uint) error
 	Unfollow(userID uint, targetID uint) error
+	GetFollowers(userID uint) ([]dto.UserShortDTO, error)
+	GetFollowing(userID uint) ([]dto.UserShortDTO, error)
 }
 
 type userService struct {
@@ -129,4 +131,30 @@ func (s *userService) Unfollow(userID uint, targetID uint) error {
 		return fmt.Errorf("invalid ids")
 	}
 	return s.repo.Unfollow(userID, targetID)
+}
+
+func (s *userService) GetFollowers(userID uint) ([]dto.UserShortDTO, error) {
+	if userID == 0 {
+		return nil, fmt.Errorf("invalid id")
+	}
+
+	users, err := s.repo.GetFollowers(userID)
+	if err != nil {
+		return nil, fmt.Errorf("get followers: %w", err)
+	}
+
+	return mapper.MapUsersToShortDTO(users), nil
+}
+
+func (s *userService) GetFollowing(userID uint) ([]dto.UserShortDTO, error) {
+	if userID == 0 {
+		return nil, fmt.Errorf("invalid id")
+	}
+
+	users, err := s.repo.GetFollowing(userID)
+	if err != nil {
+		return nil, fmt.Errorf("get following: %w", err)
+	}
+
+	return mapper.MapUsersToShortDTO(users), nil
 }

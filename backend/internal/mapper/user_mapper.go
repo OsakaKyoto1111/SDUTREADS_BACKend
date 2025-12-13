@@ -62,3 +62,15 @@ func ApplyUpdateUserDTO(u *model.User, dto dto.UpdateUserDTO) {
 		u.Description = dto.Description
 	}
 }
+
+func MapUsersToShortDTO(users []model.User) []dto.UserShortDTO {
+	res := make([]dto.UserShortDTO, 0, len(users))
+	for _, u := range users {
+		res = append(res, dto.UserShortDTO{
+			ID:       u.ID,
+			Nickname: u.Nickname,
+			Avatar:   u.AvatarURL,
+		})
+	}
+	return res
+}

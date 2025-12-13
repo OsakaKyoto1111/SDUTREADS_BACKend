@@ -5,6 +5,7 @@ import (
 	"mime/multipart"
 
 	"backend/internal/dto"
+	"backend/internal/mapper"
 	"backend/internal/model"
 	"backend/internal/repository"
 )
@@ -18,6 +19,7 @@ type PostService interface {
 	UnlikePost(postID, userID uint) error
 	GetPost(postID, userID uint) (*dto.PostWithCommentsResponse, error)
 	CreatePostWithFiles(userID uint, req dto.CreatePostRequestMultipart, files []*multipart.FileHeader) (uint, error)
+	GetUserPosts(targetUserID, viewerID uint) ([]dto.PostResponse, error)
 }
 
 type postService struct {
@@ -191,4 +193,20 @@ func (s *postService) GetPost(postID, userID uint) (*dto.PostWithCommentsRespons
 		IsLiked:     isLiked,
 		Comments:    tree,
 	}, nil
+}
+
+func (s *postService) GetUserPosts(targetUserID, viewerID uint) ([]dto.PostResponse, error) {
+	if targetUserID == 0 {
+		return nil, fmt.Errorf("invalid id")
+	}
+	if viewerID == 0 {
+		return nil, fmt.Errorf("unauthorized")
+	}
+
+	posts, err := s.repo.GetByUser(targetUserID)
+	if err != nil {
+		return nil, err
+	}
+
+	return mapper.MapPostsToDTO(posts, viewerID), nil
 }

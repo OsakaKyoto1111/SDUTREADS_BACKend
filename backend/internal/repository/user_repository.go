@@ -28,6 +28,8 @@ type UserRepository interface {
 	Search(query string) ([]model.User, error)
 	Follow(userID, targetID uint) error
 	Unfollow(userID, targetID uint) error
+	GetFollowers(userID uint) ([]model.User, error)
+	GetFollowing(userID uint) ([]model.User, error)
 }
 
 type userRepository struct {
@@ -202,4 +204,30 @@ func (r *userRepository) Unfollow(userID, targetID uint) error {
 		return fmt.Errorf("unfollow delete: %w", err)
 	}
 	return nil
+}
+
+func (r *userRepository) GetFollowers(userID uint) ([]model.User, error) {
+	var users []model.User
+
+	if err := r.db.
+		Joins("JOIN followers ON followers.follower_id = users.id").
+		Where("followers.user_id = ?", userID).
+		Find(&users).Error; err != nil {
+		return nil, fmt.Errorf("get followers: %w", err)
+	}
+
+	return users, nil
+}
+
+func (r *userRepository) GetFollowing(userID uint) ([]model.User, error) {
+	var users []model.User
+
+	if err := r.db.
+		Joins("JOIN followers ON followers.user_id = users.id").
+		Where("followers.follower_id = ?", userID).
+		Find(&users).Error; err != nil {
+		return nil, fmt.Errorf("get following: %w", err)
+	}
+
+	return users, nil
 }

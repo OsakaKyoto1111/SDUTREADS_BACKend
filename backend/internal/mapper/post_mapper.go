@@ -3,6 +3,7 @@ package mapper
 import (
 	"backend/internal/dto"
 	"backend/internal/model"
+	"time"
 )
 
 func MapPostsToDTO(posts []model.Post, userID uint) []dto.PostResponse {
@@ -25,13 +26,22 @@ func MapPostsToDTO(posts []model.Post, userID uint) []dto.PostResponse {
 			}
 		}
 
+		author := dto.PostAuthorDTO{
+			ID:        p.User.ID,
+			Nickname:  p.User.Nickname,
+			AvatarURL: p.User.AvatarURL,
+		}
+
 		result = append(result, dto.PostResponse{
 			ID:          p.ID,
+			UserID:      p.UserID,
+			User:        author,
 			Description: p.Description,
 			Files:       files,
 			LikesCount:  len(p.Likes),
 			Comments:    len(p.Comments),
 			IsLiked:     isLiked,
+			CreatedAt:   p.CreatedAt.Format(time.RFC3339),
 		})
 	}
 

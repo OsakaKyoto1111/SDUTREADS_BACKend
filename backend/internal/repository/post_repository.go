@@ -17,6 +17,7 @@ type PostRepository interface {
 	LikePost(postID, userID uint) error
 	UnlikePost(postID, userID uint) error
 	FindByID(id uint) (*model.Post, error)
+	GetByUser(userID uint) ([]model.Post, error)
 }
 
 type postRepository struct {
@@ -99,4 +100,18 @@ func (r *postRepository) FindByID(id uint) (*model.Post, error) {
 		return nil, fmt.Errorf("find post: %w", err)
 	}
 	return &post, nil
+}
+
+func (r *postRepository) GetByUser(userID uint) ([]model.Post, error) {
+	var posts []model.Post
+	if err := r.db.
+		Where("user_id = ?", userID).
+		Preload("Files").
+		Preload("Likes").
+		Preload("Comments").
+		Order("created_at DESC").
+		Find(&posts).Error; err != nil {
+		return nil, fmt.Errorf("get posts by user: %w", err)
+	}
+	return posts, nil
 }

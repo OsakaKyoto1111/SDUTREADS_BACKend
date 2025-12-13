@@ -142,3 +142,43 @@ func (h *UserHandler) Unfollow(c echo.Context) error {
 
 	return respondJSON(c, http.StatusOK, echo.Map{"message": "unfollowed"})
 }
+
+func (h *UserHandler) Followers(c echo.Context) error {
+	_, ok := requireAuth(c)
+	if !ok {
+		return nil
+	}
+
+	targetID, err := parseIDParam(c, "id")
+	if err != nil {
+		httpErr := err.(*echo.HTTPError)
+		return respondError(c, httpErr.Code, httpErr.Message.(string))
+	}
+
+	users, err := h.svc.GetFollowers(targetID)
+	if err != nil {
+		return respondError(c, http.StatusInternalServerError, err.Error())
+	}
+
+	return respondJSON(c, http.StatusOK, users)
+}
+
+func (h *UserHandler) Following(c echo.Context) error {
+	_, ok := requireAuth(c)
+	if !ok {
+		return nil
+	}
+
+	targetID, err := parseIDParam(c, "id")
+	if err != nil {
+		httpErr := err.(*echo.HTTPError)
+		return respondError(c, httpErr.Code, httpErr.Message.(string))
+	}
+
+	users, err := h.svc.GetFollowing(targetID)
+	if err != nil {
+		return respondError(c, http.StatusInternalServerError, err.Error())
+	}
+
+	return respondJSON(c, http.StatusOK, users)
+}
