@@ -84,6 +84,7 @@ func main() {
 	userGroup.POST("/:id/follow", userHandler.Follow)
 	userGroup.DELETE("/:id/follow", userHandler.Unfollow)
 	userGroup.POST("/avatar", fileHandler.Upload)
+	userGroup.GET("/:id", userHandler.GetProfileByID)
 
 	postGroup := api.Group("/posts")
 	postGroup.Use(middleware.JWT(cfg.JWTSecret))

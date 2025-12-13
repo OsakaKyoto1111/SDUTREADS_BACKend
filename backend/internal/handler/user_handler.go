@@ -1,6 +1,8 @@
 package handler
 
 import (
+	"backend/internal/repository"
+	"errors"
 	"net/http"
 
 	"backend/internal/dto"
@@ -17,6 +19,24 @@ func NewUserHandler(s service.UserService) *UserHandler {
 	return &UserHandler{svc: s}
 }
 
+func (h *UserHandler) GetProfileByID(c echo.Context) error {
+	id, err := parseIDParam(c, "id")
+	if err != nil {
+		var httpErr *echo.HTTPError
+		errors.As(err, &httpErr)
+		return respondError(c, httpErr.Code, httpErr.Message.(string))
+	}
+
+	resp, err := h.svc.GetUser(id)
+	if err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
+			return respondError(c, http.StatusNotFound, "user not found")
+		}
+		return respondError(c, http.StatusInternalServerError, "internal server error")
+	}
+
+	return respondJSON(c, http.StatusOK, resp)
+}
 func (h *UserHandler) GetProfile(c echo.Context) error {
 	idStr := c.Param("id")
 
