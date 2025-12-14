@@ -164,7 +164,7 @@ func (h *UserHandler) Unfollow(c echo.Context) error {
 	return respondJSON(c, http.StatusOK, echo.Map{"message": "unfollowed"})
 }
 
-func (h *UserHandler) Followers(c echo.Context) error {
+	func (h *UserHandler) Followers(c echo.Context) error {
 	_, ok := requireAuth(c)
 	if !ok {
 		return nil

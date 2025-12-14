@@ -18,8 +18,8 @@ type UserService interface {
 	SetAvatar(id uint, avatarURL string) (*model.User, error)
 	Follow(userID uint, targetID uint) error
 	Unfollow(userID uint, targetID uint) error
-	GetFollowers(userID uint) ([]dto.UserShortDTO, error)
-	GetFollowing(userID uint) ([]dto.UserShortDTO, error)
+	GetFollowers(userID uint) ([]dto.UserResponse, error)
+	GetFollowing(userID uint) ([]dto.UserResponse, error)
 	IsFollowing(userID uint, targetID uint) (bool, error)
 }
 
@@ -144,7 +144,7 @@ func (s *userService) Unfollow(userID uint, targetID uint) error {
 	return s.repo.Unfollow(userID, targetID)
 }
 
-func (s *userService) GetFollowers(userID uint) ([]dto.UserShortDTO, error) {
+func (s *userService) GetFollowers(userID uint) ([]dto.UserResponse, error) {
 	if userID == 0 {
 		return nil, fmt.Errorf("invalid id")
 	}
@@ -154,10 +154,19 @@ func (s *userService) GetFollowers(userID uint) ([]dto.UserShortDTO, error) {
 		return nil, fmt.Errorf("get followers: %w", err)
 	}
 
-	return mapper.MapUsersToShortDTO(users), nil
+	resp := make([]dto.UserResponse, 0, len(users))
+	for _, u := range users {
+		postsCnt, _ := s.repo.GetPostsCount(u.ID)
+		followersCnt, _ := s.repo.GetFollowersCount(u.ID)
+		followingCnt, _ := s.repo.GetFollowingCount(u.ID)
+
+		resp = append(resp, mapper.MapUserToResponseWithCounts(&u, postsCnt, followersCnt, followingCnt))
+	}
+
+	return resp, nil
 }
 
-func (s *userService) GetFollowing(userID uint) ([]dto.UserShortDTO, error) {
+func (s *userService) GetFollowing(userID uint) ([]dto.UserResponse, error) {
 	if userID == 0 {
 		return nil, fmt.Errorf("invalid id")
 	}
@@ -167,5 +176,14 @@ func (s *userService) GetFollowing(userID uint) ([]dto.UserShortDTO, error) {
 		return nil, fmt.Errorf("get following: %w", err)
 	}
 
-	return mapper.MapUsersToShortDTO(users), nil
+	resp := make([]dto.UserResponse, 0, len(users))
+	for _, u := range users {
+		postsCnt, _ := s.repo.GetPostsCount(u.ID)
+		followersCnt, _ := s.repo.GetFollowersCount(u.ID)
+		followingCnt, _ := s.repo.GetFollowingCount(u.ID)
+
+		resp = append(resp, mapper.MapUserToResponseWithCounts(&u, postsCnt, followersCnt, followingCnt))
+	}
+
+	return resp, nil
 }
