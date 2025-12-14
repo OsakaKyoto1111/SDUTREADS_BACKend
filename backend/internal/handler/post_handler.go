@@ -183,13 +183,10 @@ func (h *PostHandler) UserPosts(c echo.Context) error {
 func (h *PostHandler) MyPosts(c echo.Context) error {
 	viewerID, ok := requireAuth(c)
 	if !ok {
-		return nil
+		return respondError(c, http.StatusUnauthorized, "unauthorized")
 	}
 
-	targetID, err := parseIDParam(c, "id")
-	if err != nil {
-		return respondError(c, http.StatusBadRequest, "invalid user id")
-	}
+	targetID := viewerID
 
 	posts, err := h.postSvc.GetUserPosts(targetID, viewerID)
 	if err != nil {
