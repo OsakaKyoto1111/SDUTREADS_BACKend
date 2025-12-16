@@ -9,7 +9,7 @@ import (
 
 type FeedRepository interface {
 	GetFollowingPosts(userID uint, limit int, cursor *time.Time) ([]model.Post, error)
-	GetRecommendedPosts(userID uint, limit int) ([]model.Post, error)
+	GetRecommendedPosts(userID uint, limit int, excludeIDs []uint) ([]model.Post, error)
 }
 
 type feedRepository struct {
@@ -24,6 +24,8 @@ func (r *feedRepository) GetFollowingPosts(userID uint, limit int, cursor *time.
 	var posts []model.Post
 
 	q := r.db.
+		// ✅ защита от дублей из-за JOIN (если в followers есть повторяющиеся связи)
+		Distinct("posts.id").
 		Joins("JOIN followers ON followers.user_id = posts.user_id").
 		Where("followers.follower_id = ?", userID).
 		Preload("User").
@@ -43,18 +45,23 @@ func (r *feedRepository) GetFollowingPosts(userID uint, limit int, cursor *time.
 	return posts, nil
 }
 
-func (r *feedRepository) GetRecommendedPosts(userID uint, limit int) ([]model.Post, error) {
+func (r *feedRepository) GetRecommendedPosts(userID uint, limit int, excludeIDs []uint) ([]model.Post, error) {
 	var posts []model.Post
-
-	// Сначала выберем ID постов raw-запросом
 	var ids []uint
-	if err := r.db.
-		Raw(`
-            SELECT id FROM posts
-            WHERE user_id != ?
-            ORDER BY RANDOM()
-            LIMIT ?
-        `, userID, limit).
+
+	// ✅ выбираем id рекомендованных постов, исключая уже попавшие в following
+	q := r.db.
+		Table("posts").
+		Select("id").
+		Where("user_id != ?", userID)
+
+	if len(excludeIDs) > 0 {
+		q = q.Where("id NOT IN ?", excludeIDs)
+	}
+
+	if err := q.
+		Order("RANDOM()").
+		Limit(limit).
 		Scan(&ids).Error; err != nil {
 		return nil, err
 	}
@@ -63,7 +70,7 @@ func (r *feedRepository) GetRecommendedPosts(userID uint, limit int) ([]model.Po
 		return []model.Post{}, nil
 	}
 
-	// Теперь загрузим сами посты с Preload
+	// ✅ подгружаем сами посты с preload
 	if err := r.db.
 		Where("id IN ?", ids).
 		Preload("User").
