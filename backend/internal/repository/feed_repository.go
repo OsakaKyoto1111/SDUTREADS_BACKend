@@ -20,19 +20,24 @@ func NewFeedRepository(db *gorm.DB) FeedRepository {
 	return &feedRepository{db: db}
 }
 
-func (r *feedRepository) GetFollowingPosts(userID uint, limit int, cursor *time.Time) ([]model.Post, error) {
+func (r *feedRepository) GetFollowingPosts(
+	userID uint,
+	limit int,
+	cursor *time.Time,
+) ([]model.Post, error) {
+
 	var posts []model.Post
 
 	q := r.db.
-		// ✅ защита от дублей из-за JOIN (если в followers есть повторяющиеся связи)
-		Distinct("posts.id").
+		// ✅ PostgreSQL DISTINCT ON
+		Select("DISTINCT ON (posts.id) posts.*").
 		Joins("JOIN followers ON followers.user_id = posts.user_id").
 		Where("followers.follower_id = ?", userID).
 		Preload("User").
 		Preload("Files").
 		Preload("Likes").
 		Preload("Comments").
-		Order("posts.created_at DESC").
+		Order("posts.id, posts.created_at DESC").
 		Limit(limit)
 
 	if cursor != nil {
@@ -42,6 +47,7 @@ func (r *feedRepository) GetFollowingPosts(userID uint, limit int, cursor *time.
 	if err := q.Find(&posts).Error; err != nil {
 		return nil, err
 	}
+
 	return posts, nil
 }
 
