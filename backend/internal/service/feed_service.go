@@ -27,9 +27,6 @@ func (s *feedService) GetFeed(userID uint, limit int, cursor *time.Time) (*dto.F
  if userID == 0 {
   return nil, fmt.Errorf("unauthorized")
  }
- if limit <= 0 {
-  limit = 20
- }
 
  following, err := s.repo.GetFollowingPosts(userID, limit, cursor)
  if err != nil {
@@ -42,9 +39,15 @@ func (s *feedService) GetFeed(userID uint, limit int, cursor *time.Time) (*dto.F
   excludeIDs = append(excludeIDs, p.ID)
  }
 
- recCount := limit / MixRatio
- if recCount < 1 {
-  recCount = 1
+ var recCount int
+ if limit > 0 {
+  recCount = limit / MixRatio
+  if recCount < 1 {
+   recCount = 1
+  }
+ } else {
+  // When no limit, use a reasonable default for recommended posts
+  recCount = 0 // No limit on recommended posts either
  }
 
  recommended, err := s.repo.GetRecommendedPosts(userID, recCount, excludeIDs)
@@ -78,9 +81,13 @@ func (s *feedService) GetFeed(userID uint, limit int, cursor *time.Time) (*dto.F
   nextCursor = &t
  }
 
+ hasMore := false
+ if limit > 0 {
+  hasMore = len(following) == limit
+ }
  return &dto.FeedResponse{
   Posts:      result,
   NextCursor: nextCursor,
-  HasMore:    len(following) == limit,
+  HasMore:    hasMore,
  }, nil
 }

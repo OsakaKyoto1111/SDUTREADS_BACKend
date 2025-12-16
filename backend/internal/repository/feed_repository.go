@@ -37,8 +37,11 @@ func (r *feedRepository) GetFollowingPosts(
 		Preload("Files").
 		Preload("Likes").
 		Preload("Comments").
-		Order("posts.id, posts.created_at DESC").
-		Limit(limit)
+		Order("posts.id, posts.created_at DESC")
+
+	if limit > 0 {
+		q = q.Limit(limit)
+	}
 
 	if cursor != nil {
 		q = q.Where("posts.created_at < ?", *cursor)
@@ -65,10 +68,11 @@ func (r *feedRepository) GetRecommendedPosts(userID uint, limit int, excludeIDs 
 		q = q.Where("id NOT IN ?", excludeIDs)
 	}
 
-	if err := q.
-		Order("RANDOM()").
-		Limit(limit).
-		Scan(&ids).Error; err != nil {
+	q = q.Order("RANDOM()")
+	if limit > 0 {
+		q = q.Limit(limit)
+	}
+	if err := q.Scan(&ids).Error; err != nil {
 		return nil, err
 	}
 
